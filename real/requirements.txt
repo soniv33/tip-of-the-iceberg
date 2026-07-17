@@ -1,5 +1,0 @@
-# Real Apache Iceberg via the official Python implementation.
-#   pyiceberg  — the Apache Iceberg Python library (catalog, snapshots, scans)
-#   [pyarrow]  — read/write real Parquet data files
-#   [sql-sqlite] — a local SQLite-backed catalog (no cloud, no external DB)
-pyiceberg[pyarrow,sql-sqlite]>=0.11

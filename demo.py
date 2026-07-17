@@ -1,136 +1,200 @@
 """
-demo.py — end-to-end walkthrough of the whole mechanism.
-============================================================
+demo.py — the full guided tour of the iceberg engine.
+=====================================================
 
-Run me with:  python demo.py
+Run:  python demo.py
 
-What this does:
-    1. Starts from a clean slate (deletes any data/ and manifests/ from a
-       previous run so the demo is reproducible).
-    2. Writes ~18 movies in FOUR separate batches — simulating four writes
-       to the table over time. Each batch becomes its own data file, its own
-       manifest, and its own snapshot in the manifest list.
-    3. Runs a few example queries and prints the full pruning trace, so you
-       can watch which files get SKIPped vs OPENed and why.
-    4. Demonstrates time travel by querying an older snapshot.
+Walks through every capability, printing what happens at each step:
 
-The batches are deliberately grouped so their title ranges don't fully
-overlap — that's what makes min/max pruning able to skip whole files.
+    1. CREATE a partitioned table (partition by genre).
+    2. APPEND four batches -> four snapshots (real metadata tree on disk).
+    3. Inspect the metadata tree (metadata.json -> manifest list -> manifests).
+    4. QUERY with pruning: exact, prefix (LIKE), range, IN, partition, AND.
+    5. TIME TRAVEL to an earlier snapshot.
+    6. DELETE — merge-on-read (delete file) vs copy-on-write (rewrite).
+    7. UPDATE and UPSERT (MERGE).
+    8. COMPACT small files (and fold in delete files).
+    9. SCHEMA EVOLUTION — add a column without rewriting old data.
+   10. EXPIRE old snapshots and garbage-collect unreferenced files.
+
+Everything is local files (CSV data + JSON metadata) so you can open the
+warehouse/ directory afterwards and see exactly what the engine wrote.
 """
 
 import os
 import shutil
 
-import write
-import query
+from iceberg import Catalog, Schema, Column, PartitionSpec, PartitionField
+from iceberg import expressions as E
 
+WAREHOUSE = "warehouse"
+TABLE = "movies.films"
 
-# ---------------------------------------------------------------------------
-# Sample data: ~18 movies, grouped into four batches. Grouping alphabetically
-# by title keeps each file's [min title .. max title] range fairly tight, so
-# pruning has something to bite on. In the real world your data wouldn't be
-# this tidy, but the mechanism is identical — it just prunes less.
-# ---------------------------------------------------------------------------
-BATCH_1 = [  # titles roughly A–D
-    {"title": "Amelie", "year": 2001, "genre": "Romance"},
-    {"title": "Argo", "year": 2012, "genre": "Thriller"},
-    {"title": "Boyhood", "year": 2014, "genre": "Drama"},
-    {"title": "Drive", "year": 2011, "genre": "Crime"},
-]
-BATCH_2 = [  # titles roughly F–H
-    {"title": "Fargo", "year": 1996, "genre": "Crime"},
-    {"title": "Gattaca", "year": 1997, "genre": "SciFi"},
-    {"title": "Gravity", "year": 2013, "genre": "SciFi"},
-    {"title": "Her", "year": 2013, "genre": "Romance"},
-]
-BATCH_3 = [  # titles roughly I–M
-    {"title": "Inception", "year": 2010, "genre": "SciFi"},
-    {"title": "Interstellar", "year": 2014, "genre": "SciFi"},
-    {"title": "Magnolia", "year": 1999, "genre": "Drama"},
-    {"title": "Margin Call", "year": 2011, "genre": "Drama"},
-    {"title": "Moonlight", "year": 2016, "genre": "Drama"},
-]
-BATCH_4 = [  # titles roughly N–Z
-    {"title": "Nightcrawler", "year": 2014, "genre": "Thriller"},
-    {"title": "Prisoners", "year": 2013, "genre": "Thriller"},
-    {"title": "Sicario", "year": 2015, "genre": "Thriller"},
-    {"title": "Whiplash", "year": 2014, "genre": "Drama"},
-    {"title": "Zodiac", "year": 2007, "genre": "Thriller"},
+BATCHES = [
+    [
+        {"title": "Amelie", "year": 2001, "genre": "Romance"},
+        {"title": "Argo", "year": 2012, "genre": "Thriller"},
+        {"title": "Boyhood", "year": 2014, "genre": "Drama"},
+        {"title": "Drive", "year": 2011, "genre": "Crime"},
+    ],
+    [
+        {"title": "Fargo", "year": 1996, "genre": "Crime"},
+        {"title": "Gattaca", "year": 1997, "genre": "SciFi"},
+        {"title": "Gravity", "year": 2013, "genre": "SciFi"},
+        {"title": "Her", "year": 2013, "genre": "Romance"},
+    ],
+    [
+        {"title": "Inception", "year": 2010, "genre": "SciFi"},
+        {"title": "Interstellar", "year": 2014, "genre": "SciFi"},
+        {"title": "Magnolia", "year": 1999, "genre": "Drama"},
+        {"title": "Margin Call", "year": 2011, "genre": "Drama"},
+        {"title": "Moonlight", "year": 2016, "genre": "Drama"},
+    ],
+    [
+        {"title": "Nightcrawler", "year": 2014, "genre": "Thriller"},
+        {"title": "Prisoners", "year": 2013, "genre": "Thriller"},
+        {"title": "Sicario", "year": 2015, "genre": "Thriller"},
+        {"title": "Whiplash", "year": 2014, "genre": "Drama"},
+        {"title": "Zodiac", "year": 2007, "genre": "Thriller"},
+    ],
 ]
 
 
-def _reset():
-    """Delete previous demo output so each run starts fresh and reproducible."""
-    for d in (write.DATA_DIR, write.MANIFEST_DIR):
-        if os.path.exists(d):
-            shutil.rmtree(d)
+def rule(title):
+    print("\n" + "=" * 72)
+    print(f"  {title}")
+    print("=" * 72)
+
+
+def on_disk(table):
+    """Count what the engine has written under the table directory."""
+    kinds = {"data (.csv)": 0, "manifests": 0, "manifest lists": 0,
+             "delete files": 0, "metadata versions": 0}
+    for root, _dirs, files in os.walk(table.location):
+        for name in files:
+            if name.startswith("delete-"):
+                kinds["delete files"] += 1
+            elif name.endswith(".csv"):
+                kinds["data (.csv)"] += 1
+            elif name.startswith("snap-"):
+                kinds["manifest lists"] += 1
+            elif name.startswith("manifest-"):
+                kinds["manifests"] += 1
+            elif name.endswith(".metadata.json"):
+                kinds["metadata versions"] += 1
+    return kinds
 
 
 def main():
-    print("=" * 68)
-    print("  tip-of-the-iceberg :: end-to-end demo")
-    print("=" * 68)
+    if os.path.exists(WAREHOUSE):
+        shutil.rmtree(WAREHOUSE)
 
-    _reset()
+    cat = Catalog(WAREHOUSE)
 
-    # --- Write phase: four writes over "time" --------------------------
-    print("\n[1] WRITE PHASE — four batches, four snapshots\n")
-    write.write_batch(BATCH_1, "file_1.csv")  # snapshot #1
-    write.write_batch(BATCH_2, "file_2.csv")  # snapshot #2
-    write.write_batch(BATCH_3, "file_3.csv")  # snapshot #3
-    write.write_batch(BATCH_4, "file_4.csv")  # snapshot #4
+    # 1. CREATE ---------------------------------------------------------
+    rule("1 · CREATE TABLE (partitioned by genre)")
+    t = cat.create_table(
+        TABLE,
+        Schema([Column(1, "title", "string"), Column(2, "year", "int"),
+                Column(3, "genre", "string")]),
+        PartitionSpec([PartitionField("genre", "identity")]),
+    )
+    print(f"Created {TABLE} at {t.location}")
 
-    # --- Query phase ---------------------------------------------------
-    print("\n[2] QUERY PHASE — watch the pruning decisions\n")
+    # 2. APPEND ---------------------------------------------------------
+    rule("2 · APPEND four batches -> four snapshots")
+    for i, batch in enumerate(BATCHES, 1):
+        snap = t.append(batch)
+        print(f"  batch {i}: snapshot {snap['snapshot-id']} "
+              f"(+{snap['summary']['added-data-files']} files, "
+              f"{snap['summary']['total-records']} total records)")
 
-    # 'Margin Call' lives in batch 3 only. Files 1, 2, 4 should be SKIPped
-    # by their title ranges; only file_3.csv should be OPENed.
-    query.query("title", "Margin Call")
+    # 3. METADATA TREE --------------------------------------------------
+    rule("3 · THE METADATA TREE (metadata.json -> manifest list -> manifests)")
+    snap = t.current_snapshot()
+    manifests = t._manifest_list(snap)
+    print(f"  current snapshot {snap['snapshot-id']} -> manifest list "
+          f"{os.path.basename(snap['manifest-list'])}")
+    print(f"  manifest list references {len(manifests)} manifest(s):")
+    for m in manifests:
+        entries = len(__import__("json").load(open(t._abs(m)))["entries"])
+        print(f"    {os.path.basename(m)}  ({entries} data file entr(y/ies))")
+    print(f"  on disk: {on_disk(t)}")
 
-    # 'Inception' is also in batch 3. Same pruning shape, different row.
-    query.query("title", "Inception")
+    # 4. QUERIES WITH PRUNING ------------------------------------------
+    rule("4 · QUERIES (watch the pruning decisions)")
+    print("\n[exact]  title == 'Margin Call'")
+    t.scan(E.Eq("title", "Margin Call")).explain()
+    print("\n[prefix] title LIKE 'I%'  (a prefix is a range -> still prunes)")
+    t.scan(E.StartsWith("title", "I")).explain()
+    print("\n[range]  year >= 2014")
+    t.scan(E.GtEq("year", 2014)).explain()
+    print("\n[in]     genre IN ('Crime','Romance')")
+    t.scan(E.In("genre", ["Crime", "Romance"])).explain()
+    print("\n[partition] genre == 'SciFi'  (whole partitions skipped)")
+    t.scan(E.Eq("genre", "SciFi")).explain()
+    print("\n[and]    genre == 'Drama' AND year >= 2015")
+    t.scan(E.And(E.Eq("genre", "Drama"), E.GtEq("year", 2015))).explain()
 
-    # A title that doesn't exist anywhere. Every file whose range excludes it
-    # is skipped; any file whose range happens to include it is opened and
-    # scanned, but no rows match. (Pruning is conservative: it never skips a
-    # file that *might* contain the value.)
-    query.query("title", "Casablanca")
+    # 5. TIME TRAVEL ----------------------------------------------------
+    rule("5 · TIME TRAVEL (query snapshot #2, before 'Margin Call' existed)")
+    second = t.snapshots()[1]["snapshot-id"]
+    t.scan(E.Eq("title", "Margin Call"), snapshot_id=second).explain()
 
-    # Filter on a different column entirely — the same min/max machinery works
-    # for years. Only files whose [min year .. max year] spans 2016 are opened.
-    query.query("year", 2016)
+    # 6. MERGE-ON-READ DELETE ------------------------------------------
+    rule("6 · DELETE (merge-on-read: writes a small delete file, data untouched)")
+    live_data, live_del = t._live_entries(t.current_snapshot())
+    t.delete(E.Eq("title", "Drive"), mode="merge-on-read")
+    data2, del2 = t._live_entries(t.current_snapshot())
+    print(f"  data files: {len(live_data)} -> {len(data2)} (unchanged), "
+          f"delete files: {len(live_del)} -> {len(del2)} (one added)")
+    print(f"  'Drive' visible now? {[r['title'] for r in t.scan(E.Eq('title','Drive')).rows()]} "
+          f"(hidden at read time by the delete file)")
 
-    # --- LIKE queries: the limits of min/max pruning -------------------
-    print("\n[3] LIKE PHASE — prefix patterns prune, leading wildcards can't\n")
+    # 7. COMPACTION -----------------------------------------------------
+    rule("7 · COMPACT (merge many small files -> one per partition, fold deletes)")
+    d0, x0 = (len(data2), len(del2))
+    t.compact()
+    data3, del3 = t._live_entries(t.current_snapshot())
+    print(f"  LIVE data files: {d0} -> {len(data3)} (one per genre partition), "
+          f"delete files: {x0} -> {len(del3)} (folded in)")
+    print(f"  'Drive' still gone (now physically absent, not just hidden)? "
+          f"{not t.scan(E.Eq('title','Drive')).rows()}")
 
-    # 'I%' is a PREFIX pattern, which is really the range ['I', 'J'). The same
-    # min/max test applies, so files whose title range misses that band get
-    # skipped. Only file_3 (Inception..Moonlight) can hold an 'I...' title.
-    query.query("title", "I%", op="LIKE")
+    # 8. COPY-ON-WRITE DELETE / UPDATE / UPSERT ------------------------
+    rule("8 · COPY-ON-WRITE DELETE, UPDATE, UPSERT")
+    t.delete(E.Eq("title", "Zodiac"))          # rewrites data, no delete file
+    print(f"  COW delete Zodiac -> visible? "
+          f"{bool(t.scan(E.Eq('title','Zodiac')).rows())}")
+    t.update(E.Eq("title", "Argo"), {"year": 2013})
+    print(f"  UPDATE Argo.year=2013 -> {[r['year'] for r in t.scan(E.Eq('title','Argo')).rows()]}")
+    t.upsert([{"title": "Her", "year": 2013, "genre": "Drama"},        # change genre
+              {"title": "Tenet", "year": 2020, "genre": "SciFi"}],     # new row
+             key_cols=["title"])
+    print(f"  UPSERT Her(genre->Drama) + Tenet(new) -> Her genre now "
+          f"{[r['genre'] for r in t.scan(E.Eq('title','Her')).rows()]}, "
+          f"Tenet present? {bool(t.scan(E.Eq('title','Tenet')).rows())}")
 
-    # '%ll' has a LEADING wildcard. There's no lower/upper bound to compare
-    # against, so min/max proves nothing and EVERY file must be opened and
-    # scanned. Watch: zero files pruned. This is exactly the case real Iceberg
-    # leans on bloom filters (or a full scan) to handle.
-    query.query("title", "%ll", op="LIKE")
+    # 9. SCHEMA EVOLUTION ----------------------------------------------
+    rule("9 · SCHEMA EVOLUTION (add a column, no data rewrite)")
+    t.add_column("rating", "double")
+    print(f"  added 'rating'; old rows read it as: "
+          f"{[r.get('rating') for r in t.scan(E.Eq('title','Argo')).rows()]}")
+    t.append([{"title": "Dune", "year": 2021, "genre": "SciFi", "rating": 8.0}])
+    print(f"  new row carries it: "
+          f"{[(r['title'], r['rating']) for r in t.scan(E.Eq('title','Dune')).rows()]}")
 
-    # --- Add a row: an append is just a new snapshot -------------------
-    print("\n[4] ADD A ROW — appending never rewrites old files\n")
-    # In Iceberg you don't edit an existing data file; you write a NEW one and
-    # record a NEW snapshot. So 'adding a row' is just another write_batch.
-    write.write_batch([{"title": "Tenet", "year": 2020, "genre": "SciFi"}], "file_5.csv")
-    # It's immediately visible to new queries via the latest snapshot...
-    query.query("title", "Tenet")
+    # 10. EXPIRE --------------------------------------------------------
+    rule("10 · EXPIRE SNAPSHOTS (drop history, garbage-collect files)")
+    print(f"  snapshots before: {len(t.snapshots())}, files: {on_disk(t)}")
+    removed = t.expire_snapshots(keep_last=1)
+    print(f"  expired to 1 snapshot; garbage-collected {removed} files")
+    print(f"  snapshots after:  {len(t.snapshots())}, files: {on_disk(t)}")
+    print(f"  table still fully queryable: "
+          f"{len(t.scan().rows())} rows, e.g. Tenet? "
+          f"{bool(t.scan(E.Eq('title','Tenet')).rows())}")
 
-    # --- Time travel ---------------------------------------------------
-    print("\n[5] TIME TRAVEL — query the table as it existed at snapshot #2\n")
-    # At snapshot #2 only batches 1 and 2 had been written, so 'Margin Call'
-    # (batch 3) did not exist yet. The query sees only two data files and
-    # finds nothing — exactly what the table looked like back then. Note that
-    # 'Tenet' (snapshot #5) is likewise invisible here.
-    query.query("title", "Margin Call", snapshot_id=2)
-
-    print("\nDone. Poke around data/ and manifests/ to see what got written.")
+    print("\nDone. Explore warehouse/movies/films/ to see the real files.")
 
 
 if __name__ == "__main__":
