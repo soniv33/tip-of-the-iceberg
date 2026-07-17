@@ -1,200 +1,158 @@
 # tip-of-the-iceberg
 
-A minimal, **educational** reimplementation of the one idea that makes
-[Apache Iceberg](https://iceberg.apache.org/) fast: **metadata-driven file
-pruning with snapshots for time travel.**
+A compact, **from-scratch implementation of Apache Iceberg's table format and
+mechanism**, in pure Python (standard library only — no pyarrow, no cloud, no
+external dependencies).
 
-Local files only. No cloud, no S3, no Spark, no external dependencies — just
-the Python standard library. Data files are CSV so you can `cat` them and see
-exactly what's inside.
+This is a *working engine*, not a mock. It maintains a real Iceberg-style
+metadata tree, prunes files by statistics at read time, and supports snapshots,
+time travel, copy-on-write **and** merge-on-read deletes, updates, upserts,
+compaction, snapshot expiration, and schema evolution.
 
-**📱 Try it in your browser / on your phone:** open [`index.html`](index.html) —
-a self-contained page (no server, no build step) that mirrors the Python and
-lets you run queries (`==` and `LIKE`), **add a row live**, and watch the
-SKIP/OPEN pruning decisions and snapshots update in front of you. It opens
-with an ELI5 explainer. See [Live demo](#live-demo-phone--browser) below to
-host it on GitHub Pages.
-
-> ⚠️ **The top-level code is a toy for learning, not a real implementation.**
-> It exists to make one mechanism legible in ~300 lines of commented Python.
-> For the real thing, see the two-track layout below.
-
----
-
-## Two tracks
-
-This repo teaches Iceberg from two directions:
-
-- **🧊 The toy (top level + `index.html`)** — a hand-rolled model in plain
-  Python + CSV/JSON, plus a phone-friendly browser demo. Read every line; see
-  min/max pruning, snapshots, and time travel with nothing hidden.
-- **⚙️ The real track ([`real/`](real/))** — the **official Apache
-  implementation, [PyIceberg](https://py.iceberg.apache.org/)**, building
-  **genuine Iceberg tables** on local disk: real Parquet data files, Avro
-  manifests, a SQLite catalog, partition pruning, and row-level deletes. The
-  same files Spark/Trino/DuckDB could open. See [`real/README.md`](real/README.md).
-
-Learn the mechanism in the toy, then watch the real engine do exactly the same
-things (and more) in `real/`.
-
----
-
-## The one idea
-
-When you query a big table for `title == 'Margin Call'`, the slow way is to
-open every data file and scan every row. Iceberg avoids this by **writing down
-metadata at write time** — including the **min and max of every column in
-every file** — so that at read time it can *prove* a file can't contain your
-value and **skip it without ever opening it**.
-
-If a file's titles run from `Amelie` to `Drive`, then `Margin Call` (which
-sorts after `Drive`) simply cannot be in it. Skip it. That's min/max pruning,
-and it's the whole trick.
-
-### `LIKE`: where pruning works, and where it can't
-
-The same min/max idea extends to `LIKE`, and it's a great lesson in the
-*limits* of pruning:
-
-- **Prefix pattern** — `title LIKE 'Ma%'` matches exactly the range
-  `['Ma', 'Mb')`, so min/max still prunes files. (Real engines literally
-  rewrite `col LIKE 'x%'` into `col >= 'x' AND col < 'x'++`.)
-- **Leading wildcard** — `title LIKE '%all'` has no lower/upper bound, so
-  min/max can prove nothing and **every file must be opened**. In real
-  Iceberg this is where bloom filters or a full scan take over.
-
-### Adding a row
-
-Iceberg never edits an existing data file. **Adding a row is a new write:** a
-new data file + a new manifest + a new snapshot. `write.write_batch([row],
-"file_5.csv")` does exactly this, and the row is instantly visible to new
-queries while every older snapshot stays unchanged (so time travel still
-works). Updates/deletes are a separate mechanism (delete files /
-merge-on-read) this toy doesn't cover.
-
----
-
-## What this demonstrates
-
-Run the demo:
+It is deliberately **readable rather than byte-compatible with the spec**: data
+files are CSV instead of Parquet and metadata is JSON instead of Avro, so you
+can open every file in the warehouse and see exactly what the engine did. The
+concepts and control flow are the real ones — this is not the official
+[Apache Iceberg](https://iceberg.apache.org/) library, and it isn't meant for
+production, but it implements the same ideas end to end.
 
 ```bash
-python demo.py
+python demo.py     # the full guided tour (no install needed)
 ```
 
-You'll see four writes (each becomes a snapshot), then queries that print a
-decision for every file:
-
-```
-QUERY  title == 'Margin Call'   (snapshot #4, 4 data file(s))
---------------------------------------------------------------------
-  SKIP  file_1.csv     (range Amelie–Drive, doesn't contain 'Margin Call')
-  SKIP  file_2.csv     (range Fargo–Her, doesn't contain 'Margin Call')
-  OPEN  file_3.csv     (range Inception–Moonlight, checking rows)
-          -> match: {'title': 'Margin Call', 'year': '2011', 'genre': 'Drama'}
-  SKIP  file_4.csv     (range Nightcrawler–Zodiac, doesn't contain 'Margin Call')
---------------------------------------------------------------------
-  Pruned 3/4 files without opening them. Found 1 matching row(s).
-```
-
-Three of four files are eliminated using metadata alone. Only the surviving
-file is actually read.
+There's also an [`index.html`](index.html) — a self-contained, phone-friendly
+interactive companion that visualizes the pruning idea in the browser.
 
 ---
+
+## What it implements
+
+| Capability | Where | Notes |
+|---|---|---|
+| Schema & typed columns | `iceberg/schema.py` | field IDs, CSV (de)serialization |
+| Partitioning | `iceberg/schema.py` | identity / bucket[N] / truncate[W] transforms |
+| Per-file statistics | `iceberg/schema.py` | record count, null counts, min/max bounds |
+| Predicate pushdown | `iceberg/expressions.py` | `==,!=,<,<=,>,>=, IN, IS NULL, LIKE 'x%'`, `AND/OR/NOT` |
+| Metadata tree | `iceberg/table.py` | metadata.json → manifest list → manifests → data files |
+| Snapshots & time travel | `iceberg/table.py` | by `snapshot_id` or as-of timestamp |
+| Append (incremental) | `iceberg/table.py` | reuses parent manifests, writes one new manifest |
+| Delete — copy-on-write | `iceberg/table.py` | rewrites data files without the rows |
+| Delete — merge-on-read | `iceberg/table.py` | writes equality **delete files**, applied at read via sequence numbers |
+| Update / Upsert (MERGE) | `iceberg/table.py` | delete + insert as one snapshot |
+| Compaction | `iceberg/table.py` | merges small files per partition, folds in delete files |
+| Snapshot expiration + GC | `iceberg/table.py` | drops old snapshots, garbage-collects unreferenced files |
+| Schema evolution | `iceberg/table.py` | add a column without rewriting existing data |
+
+---
+
+## The core idea (pruning)
+
+A naive engine answering `title == 'Margin Call'` opens every file and scans
+every row. Iceberg records the **min and max of each column in each file** at
+write time, so at read time it can *prove* a file can't contain your value and
+**skip it unopened**:
+
+```
+scan title == 'Margin Call'  (snapshot …, 11 data file(s))
+  SKIP  …Amelie.csv     (title [Amelie..Amelie] — stats rule it out)
+  …
+  OPEN  …Magnolia.csv   (title [Magnolia..Moonlight] — checking rows)
+  …
+  -> opened 1/11, 1 matching row(s)
+```
+
+The same statistics extend to ranges (`year >= 2014`), `IN`, and prefix `LIKE`
+(`'Ma%'` is the range `['Ma','Mb')`). A leading-wildcard `LIKE '%all'` has no
+bound, so it can't be pruned — that's the honest limit of min/max, and the
+engine reflects it. Partitioning (e.g. by `genre`) makes pruning even sharper:
+filtering on the partition column skips whole partitions.
+
+## The metadata tree (and time travel)
+
+Every write creates a new **snapshot** and never mutates the past:
+
+```
+metadata/vN.metadata.json     the table root (schema, spec, current snapshot)
+        │
+        ▼
+metadata/snap-<id>.json        a snapshot's MANIFEST LIST
+        │
+        ▼
+metadata/manifest-*.json       MANIFESTS (lists of data files + their stats)
+        │
+        ▼
+data/genre=…/*.csv             the DATA FILES (CSV here; Parquet in real Iceberg)
+```
+
+Because snapshots are append-only, `scan(snapshot_id=…)` (or an as-of timestamp)
+reconstructs exactly what the table looked like earlier — time travel. An
+`update` or `delete` is never an in-place edit; it's a new snapshot whose files
+supersede the old ones, while the old ones live on for time travel until you
+`expire_snapshots`.
+
+## Deletes: copy-on-write vs merge-on-read
+
+Both are real Iceberg strategies, and both are here:
+
+- **Copy-on-write** rewrites the affected data files without the deleted rows.
+  Reads stay fast; writes are heavier.
+- **Merge-on-read** writes a tiny **equality delete file** and leaves data
+  files untouched; reads merge the deletes on the fly (an equality delete
+  applies only to data files with a *lower sequence number*, which is why
+  re-inserting a deleted key brings it back). **Compaction** later folds the
+  delete files back into rewritten data.
+
+---
+
+## Use it yourself
+
+```python
+from iceberg import Catalog, Schema, Column, PartitionSpec, PartitionField
+from iceberg import expressions as E
+
+cat = Catalog("warehouse")
+films = cat.create_table(
+    "movies.films",
+    Schema([Column(1, "title", "string"), Column(2, "year", "int"),
+            Column(3, "genre", "string")]),
+    PartitionSpec([PartitionField("genre", "identity")]),
+)
+
+films.append([{"title": "Margin Call", "year": 2011, "genre": "Drama"}])
+films.scan(E.Eq("title", "Margin Call")).explain()      # prints the pruning trace
+films.scan(E.GtEq("year", 2010)).rows()                 # -> list of row dicts
+films.delete(E.Eq("title", "Margin Call"), mode="merge-on-read")
+films.compact()
+```
+
+Or use the friendly one-liners: `write.py` (`write_batch(rows)`) and `query.py`
+(`query(col, val, op=..., snapshot_id=...)`).
+
+## Project layout
+
+```
+tip-of-the-iceberg/
+  iceberg/            the engine
+    schema.py         columns, types, partition transforms, file stats
+    expressions.py    predicates: row evaluation + file pruning
+    table.py          catalog, metadata tree, scans, all operations
+  write.py            quickstart: write_batch(rows)
+  query.py            quickstart: query(col, val, op, snapshot_id)
+  demo.py             full guided tour of every feature
+  index.html          interactive browser companion (visualizes pruning)
+  warehouse/          tables land here (git-ignored; rebuilt on each run)
+```
 
 ## How it maps to real Apache Iceberg
 
-Iceberg organizes metadata in a three-level tree. This project mirrors that
-tree exactly, just with simpler file formats:
+| This engine | Real Iceberg |
+|---|---|
+| CSV data files | Parquet/ORC/Avro data files |
+| JSON manifests / manifest lists | Avro manifests / manifest lists |
+| `catalog.json` + `version-hint.text` | a catalog (Hive, REST, Glue, Nessie, …) |
+| whole-table rewrite on COW ops | rewrites only the affected files |
+| one manifest per append | manifest merging / rewrite strategies |
 
-| Real Iceberg | This project | Role |
-|---|---|---|
-| **Manifest list** (one Avro file per snapshot) | `manifests/manifest_list.json` (grows, one entry per snapshot) | The table's history. Points to the manifests visible in each snapshot. |
-| **Manifest** (Avro) | `manifests/manifest_N.json` | Describes a set of data files: their paths, row counts, and per-column min/max stats. |
-| **Data file** (Parquet) | `data/file_N.csv` | The actual rows. |
-| Per-column min/max in the manifest | `column_stats: {min, max}` | The statistics that drive pruning. |
-| Snapshot | one entry in the `snapshots` list | An immutable point-in-time view of the table. |
-| Time travel | `query(..., snapshot_id=N)` | Read an older snapshot to see the table as it was. |
-
-The read path walks the tree top-down, exactly like Iceberg:
-
-```
-manifest_list.json      "which manifests exist in this snapshot?"
-        │
-        ▼
-manifest_N.json         "which data files, and what are their min/max?"
-        │                         │
-        │                         └── use min/max to SKIP or OPEN each file
-        ▼
-file_N.csv              only the files that survived pruning get scanned
-```
-
-### Snapshots & time travel
-
-Every write **appends** a new snapshot to the manifest list and **never
-overwrites** old ones. Each snapshot records the full set of manifests visible
-at that moment (all previous manifests + the new one). Because history is
-append-only, querying `snapshot_id=2` reconstructs precisely what the table
-contained after the second write — that's time travel, and it falls out
-naturally from never mutating the past.
-
----
-
-## The three files
-
-- **`write.py`** — `write_batch(rows, filename)`: writes rows to a CSV,
-  computes per-column min/max while writing, emits a manifest JSON, and
-  appends a new snapshot to the manifest list.
-- **`query.py`** — `query(column, value, snapshot_id=None)`: reads the
-  manifest list, picks a snapshot, uses min/max to decide SKIP vs OPEN for
-  each file (printing every decision), and scans only the survivors.
-- **`demo.py`** — writes ~18 movies in four batches and runs several example
-  queries plus a time-travel query, printing the full trace.
-
-Everything is heavily commented — the code is meant to be *read*.
-
----
-
-## Live demo (phone / browser)
-
-`index.html` is a single self-contained file — all HTML/CSS/JS inline, no
-external requests — that reimplements the exact same mechanism (min/max
-pruning over append-only snapshots) in a few lines of vanilla JavaScript. The
-Python remains the canonical reference; the page just mirrors it so you can
-poke at it from a phone.
-
-**Run it locally:** just open the file in a browser (double-click, or
-`python -m http.server` and visit it). No build step, works offline.
-
-**Host it free on GitHub Pages** (no server needed — the page is static):
-
-1. Push this repo to GitHub (the `index.html` must be on your default branch,
-   e.g. `main`).
-2. Repo → **Settings → Pages**.
-3. Under **Build and deployment**, set **Source = Deploy from a branch**,
-   pick your default branch and the `/ (root)` folder, then **Save**.
-4. Wait ~1 minute; your demo is live at
-   `https://<username>.github.io/tip-of-the-iceberg/`.
-
-That URL opens fine on a phone. (Vercel/Netlify also work — point them at the
-repo with no build command and an empty output dir — but GitHub Pages needs
-zero extra config here.)
-
----
-
-## Try your own
-
-```python
-import write, query
-
-write.write_batch([{"title": "Tenet", "year": 2020, "genre": "SciFi"}], "my_file.csv")
-query.query("title", "Tenet")
-query.query("year", 2020)
-query.query("title", "Tenet", snapshot_id=1)  # time travel
-```
-
-Note the deliberate simplifications: one filter shape only (`column == value`),
-one data file per write, CSV instead of Parquet, and the manifest list is a
-single growing JSON rather than one file per snapshot. All chosen for
-readability. The *mechanism* — min/max pruning over an append-only snapshot
-log — is the real thing.
+The simplifications are about *format and scale*, not about the mechanism —
+the snapshot model, metadata tree, pruning, deletes, and maintenance are the
+real design.
