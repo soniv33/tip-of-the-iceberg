@@ -21,7 +21,11 @@ python demo.py     # the full guided tour (no install needed)
 ```
 
 There's also an [`index.html`](index.html) — a self-contained, phone-friendly
-interactive companion that visualizes the pruning idea in the browser.
+**interactive companion** that ports the whole engine to the browser: query
+with live SKIP/OPEN pruning, append/delete (copy-on-write or merge-on-read)/
+update/upsert/compact/expire/add-column, a live view of the snapshot timeline
+and files-by-partition, click-to-time-travel, and a narration log explaining
+what Iceberg did at each step. No build, no server — open the file.
 
 ---
 
