@@ -3,38 +3,44 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tip-of-the-iceberg — min/max pruning, in your browser</title>
+<title>tip-of-the-iceberg — how Iceberg tables work, live</title>
 <!--
-  This page is a phone-friendly MIRROR of the Python demo in this repo.
-  The mechanism is identical to write.py / query.py:
-    - at "write" time we record per-column min/max for each file
-    - at "read" time we use those stats to SKIP files that can't match
-    - snapshots are append-only, which gives time travel
-  The Python files remain the canonical reference; this is the same idea
-  reimplemented in a little vanilla JavaScript so it runs with no server.
+  A phone-friendly, ELI5 live demo of Apache Iceberg's core mechanism.
+  This page MIRRORS the repo's Python (write.py / query.py) in vanilla JS so
+  it runs with no server. The teaching points, in order:
+    1. Each "write" makes a new file + records its per-column min/max.
+    2. A query uses those min/max to SKIP files it can't need (pruning).
+    3. LIKE 'Ma%' still prunes (a prefix is a range); LIKE '%ll' can't.
+    4. "Add a row" = a brand new file + a new snapshot (append-only).
+    5. Old snapshots never change, so you can time-travel to them.
+  The Python remains canonical; this is the same idea, made pokeable.
 -->
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --ink: #1a1f26; --muted: #5b6472;
     --line: #e2e6ec; --accent: #2b6cb0; --skip: #b64a2f; --skip-bg: #fbeae4;
     --open: #1f7a4d; --open-bg: #e3f4ea; --chip: #eef1f5; --code: #f0f2f5;
+    --flash: #fff6d6;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #97a1b0;
       --line: #262d38; --accent: #6aa9e0; --skip: #e88a6f; --skip-bg: #35211b;
       --open: #6fce9b; --open-bg: #16281e; --chip: #212833; --code: #10151c;
+      --flash: #33301c;
     }
   }
   :root[data-theme="light"] {
     --bg: #f6f7f9; --panel: #ffffff; --ink: #1a1f26; --muted: #5b6472;
     --line: #e2e6ec; --accent: #2b6cb0; --skip: #b64a2f; --skip-bg: #fbeae4;
     --open: #1f7a4d; --open-bg: #e3f4ea; --chip: #eef1f5; --code: #f0f2f5;
+    --flash: #fff6d6;
   }
   :root[data-theme="dark"] {
     --bg: #0f1319; --panel: #171c24; --ink: #e6eaf0; --muted: #97a1b0;
     --line: #262d38; --accent: #6aa9e0; --skip: #e88a6f; --skip-bg: #35211b;
     --open: #6fce9b; --open-bg: #16281e; --chip: #212833; --code: #10151c;
+    --flash: #33301c;
   }
   * { box-sizing: border-box; }
   body {
@@ -45,10 +51,13 @@
   .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 56px; }
   header h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: -0.02em; }
   header p { color: var(--muted); margin: 0 0 6px; }
-  .note {
-    font-size: 0.85rem; color: var(--muted); background: var(--chip);
-    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 14px 0 0;
+  details.eli5 {
+    background: var(--chip); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; margin: 14px 0 0; font-size: 0.9rem;
   }
+  details.eli5 summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+  details.eli5 ol { margin: 10px 0 2px; padding-left: 20px; color: var(--muted); }
+  details.eli5 li { margin: 4px 0; }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
     padding: 16px; margin-top: 18px;
@@ -68,7 +77,10 @@
     color: #fff; background: var(--accent); border: 0; border-radius: 10px;
     margin-top: 4px; cursor: pointer;
   }
+  button.secondary { background: transparent; color: var(--accent);
+    border: 1px solid var(--accent); }
   button:active { filter: brightness(0.92); }
+  .hint { font-size: 0.78rem; color: var(--muted); margin: 8px 2px 0; }
   .summary {
     font-size: 0.92rem; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px;
     background: var(--chip); border: 1px solid var(--line);
@@ -99,37 +111,63 @@
     background: var(--chip); border: 1px solid var(--line); color: var(--muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
+  .snap.fresh { animation: flash 1.4s ease-out; }
+  @keyframes flash { from { background: var(--flash); } to { background: var(--chip); } }
+  .rowform { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  .toast {
+    font-size: 0.85rem; color: var(--open); background: var(--open-bg);
+    border: 1px solid var(--open); border-radius: 10px; padding: 9px 12px; margin-top: 10px;
+  }
   footer { color: var(--muted); font-size: 0.8rem; margin-top: 22px; text-align: center; }
   footer a { color: var(--accent); }
   code { background: var(--code); padding: 1px 5px; border-radius: 5px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
-  @media (max-width: 440px) { .controls { grid-template-columns: 1fr; } }
+  @media (max-width: 460px) {
+    .controls { grid-template-columns: 1fr; }
+    .rowform { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>🧊 tip-of-the-iceberg</h1>
-    <p>Watch Apache Iceberg's core trick — <b>min/max file pruning</b> — decide which files
-       it can skip <em>without opening them</em>.</p>
-    <div class="note">
-      This page mirrors the repo's Python (<code>write.py</code>/<code>query.py</code>) in the browser,
-      so it runs with no server. Data was "written" in 4 batches → 4 files → 4 snapshots.
-      Pick a filter and run it; every file prints a SKIP or OPEN decision, just like the CLI.
-    </div>
+    <p>Watch Apache Iceberg's core trick — it decides which files it can
+       <b>skip without opening them</b>, using nothing but each file's min &amp; max.</p>
+    <details class="eli5">
+      <summary>Explain it like I'm five</summary>
+      <ol>
+        <li>Every time we save movies, they go in a <b>new box (file)</b>, and we
+            write on the lid the <b>first and last</b> title inside (min &amp; max).</li>
+        <li>To find <em>"Margin Call"</em>, we read the <b>lids</b> first. If a box says
+            <em>Amelie–Drive</em>, "Margin Call" can't be inside — <b>skip it, don't open it</b>.</li>
+        <li><code>LIKE 'Ma%'</code> (starts-with) still works from the lids. But
+            <code>LIKE '%ll'</code> (ends-with) can't — we must open <b>every</b> box.</li>
+        <li><b>Adding a movie</b> makes a brand-new box; we never rewrite old ones.</li>
+        <li>Because old boxes never change, we can <b>time-travel</b> to how the shelf looked before.</li>
+      </ol>
+    </details>
   </header>
 
   <section class="panel">
-    <h2>Run a query</h2>
+    <h2>1 · Run a query</h2>
     <div class="controls">
       <div>
         <label for="col">Column</label>
         <select id="col"></select>
       </div>
       <div>
-        <label for="val">equals value</label>
+        <label for="op">Operator</label>
+        <select id="op">
+          <option value="==">== (exact)</option>
+          <option value="LIKE">LIKE (pattern)</option>
+        </select>
+      </div>
+      <div class="full">
+        <label for="val">value / pattern</label>
         <input id="val" list="vals" autocomplete="off" spellcheck="false">
         <datalist id="vals"></datalist>
+        <div class="hint" id="valhint"></div>
       </div>
       <div class="full">
         <label for="snap">Snapshot (time travel — older snapshots see fewer files)</label>
@@ -148,23 +186,47 @@
   </section>
 
   <section class="panel">
-    <h2>Table history (append-only)</h2>
+    <h2>2 · Add a row (this is an Iceberg "append")</h2>
+    <div class="rowform">
+      <div>
+        <label for="nt">title</label>
+        <input id="nt" placeholder="Tenet" autocomplete="off">
+      </div>
+      <div>
+        <label for="ny">year</label>
+        <input id="ny" placeholder="2020" inputmode="numeric" autocomplete="off">
+      </div>
+      <div>
+        <label for="ng">genre</label>
+        <input id="ng" placeholder="SciFi" autocomplete="off">
+      </div>
+    </div>
+    <button class="secondary" id="add">Append → writes a new file + snapshot</button>
+    <div id="addToast"></div>
+    <p class="hint">
+      Iceberg never edits an existing file. One append = one new data file + one
+      new snapshot. Watch the history strip grow, then query for your new title.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>3 · Table history (append-only)</h2>
     <div class="snapshots" id="history"></div>
-    <p class="why" style="color:var(--muted);font-size:.82rem;margin:10px 0 0">
-      Each write appended a snapshot and never overwrote the last — that's what makes the
-      time-travel dropdown above possible.
+    <p class="hint">
+      Each write appended a snapshot and never overwrote the last — that's what
+      makes the time-travel dropdown above possible.
     </p>
   </section>
 
   <footer>
     A toy for learning, not real Iceberg.
-    See the <a href="https://github.com/soniv33/tip-of-the-iceberg">source & Python demo on GitHub</a>.
+    See the <a href="https://github.com/soniv33/tip-of-the-iceberg">source &amp; Python demo on GitHub</a>.
   </footer>
 </div>
 
 <script>
 // ===========================================================================
-// The sample data — identical batches to demo.py. Each batch is one "write".
+// Sample data — identical batches to demo.py. Each batch is one "write".
 // ===========================================================================
 const BATCHES = [
   { file: "file_1.csv", rows: [
@@ -197,62 +259,110 @@ const BATCHES = [
 const COLUMNS = ["title", "year", "genre"];
 
 // ---------------------------------------------------------------------------
-// "Write" phase (mirrors write.py): compute per-column min/max for each file,
-// and build an append-only list of snapshots. Snapshot N sees files 1..N.
+// "Write" path (mirrors write.py::write_batch). These are LET, not const,
+// because the "Add a row" button appends to them at runtime.
 // ---------------------------------------------------------------------------
+let DATA_FILES = [];   // [{ path, recordCount, rows, stats }]
+let SNAPSHOTS = [];    // [{ id, files: [...all data files so far] }]
+
+function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+
 function columnStats(rows) {
+  // Per-column min/max — min()/max() work for numbers and strings alike.
   const stats = {};
   for (const col of COLUMNS) {
-    const values = rows.map(r => r[col]);
-    // min/max work for both numbers and strings (lexicographic), like Python.
-    stats[col] = { min: values.slice().sort(cmp)[0], max: values.slice().sort(cmp).at(-1) };
+    const values = rows.map(r => r[col]).sort(cmp);
+    stats[col] = { min: values[0], max: values[values.length - 1] };
   }
   return stats;
 }
-function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
 
-const DATA_FILES = BATCHES.map(b => ({
-  path: b.file, recordCount: b.rows.length, rows: b.rows, stats: columnStats(b.rows),
-}));
+function writeBatch(rows, file) {
+  // Append-only: a new file, then a new snapshot that sees ALL files so far.
+  const df = { path: file, recordCount: rows.length, rows, stats: columnStats(rows) };
+  DATA_FILES.push(df);
+  const snapshot = { id: SNAPSHOTS.length + 1, files: DATA_FILES.slice() };
+  SNAPSHOTS.push(snapshot);
+  return snapshot;
+}
 
-// Snapshot i (1-based) contains data files 0..i-1 — append-only history.
-const SNAPSHOTS = DATA_FILES.map((_, i) => ({
-  id: i + 1, files: DATA_FILES.slice(0, i + 1),
-}));
+// Seed the four initial writes (snapshots #1–#4).
+for (const b of BATCHES) writeBatch(b.rows, b.file);
 
 // ---------------------------------------------------------------------------
-// The pruning decision (mirrors query.py::_can_skip):
-//   column == value can only match a file if  min <= value <= max.
+// Pruning decisions (mirror query.py).
 // ---------------------------------------------------------------------------
-function canSkip(file, col, value) {
+// Exact:  column == value can only match if  min <= value <= max.
+function canSkipEq(file, col, value) {
   const s = file.stats[col];
-  if (!s) return { skip: false, min: null, max: null };  // no stats → never skip
+  if (!s) return { skip: false, min: null, max: null };
   const skip = !(cmp(s.min, value) <= 0 && cmp(value, s.max) <= 0);
   return { skip, min: s.min, max: s.max };
 }
 
-// Coerce the raw input string into the column's type so year compares numerically.
-function coerce(col, raw) {
+// LIKE: a PREFIX ('Ma%') is the range ['Ma','Mb') so min/max still prunes.
+// A leading/embedded wildcard ('%ll') has no bound → we must open every file.
+function prefixBounds(pattern) {
+  const isPrefix = pattern.endsWith("%")
+    && !pattern.slice(0, -1).includes("%") && !pattern.includes("_");
+  if (!isPrefix) return { prunable: false };
+  const prefix = pattern.slice(0, -1);
+  if (prefix === "") return { prunable: false };  // "%" matches everything
+  const prefixEnd = prefix.slice(0, -1)
+    + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+  return { prunable: true, prefix, prefixEnd };
+}
+function canSkipLike(file, col, pattern) {
+  const s = file.stats[col];
+  if (!s) return { skip: false, min: null, max: null, prunable: false };
+  const lo = String(s.min), hi = String(s.max);
+  const b = prefixBounds(pattern);
+  if (!b.prunable) return { skip: false, min: lo, max: hi, prunable: false };
+  const skip = hi < b.prefix || lo >= b.prefixEnd;
+  return { skip, min: lo, max: hi, prunable: true };
+}
+// SQL LIKE match: % → any run, _ → any single char. Built as a regex.
+function likeMatch(value, pattern) {
+  let re = "^";
+  for (const ch of pattern) {
+    if (ch === "%") re += ".*";
+    else if (ch === "_") re += ".";
+    else re += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(re + "$").test(value);
+}
+
+function coerce(col, raw) {  // exact-match on year should compare numerically
   if (col === "year") { const n = Number(raw); return Number.isFinite(n) ? n : raw; }
   return raw;
 }
 
-function runQuery(col, value, snapshotId) {
-  const snap = SNAPSHOTS.find(s => s.id === snapshotId) || SNAPSHOTS.at(-1);
+function runQuery(col, op, value, snapshotId) {
+  const snap = SNAPSHOTS.find(s => s.id === snapshotId) || SNAPSHOTS[SNAPSHOTS.length - 1];
   const trace = [];
   let matched = 0, skipped = 0;
   for (const file of snap.files) {
-    const d = canSkip(file, col, value);
-    if (d.skip) {
-      skipped++;
-      trace.push({ kind: "skip", name: file.path, min: d.min, max: d.max, matches: [] });
+    let d, why, matches = [];
+    if (op === "LIKE") {
+      d = canSkipLike(file, col, value);
+      if (d.skip) why = `range ${d.min}–${d.max}, no ${fmt(op, value)} match possible`;
+      else if (d.prunable) why = `range ${d.min}–${d.max}, could match ${fmt(op, value)}, checking`;
+      else why = `leading wildcard ${fmt(op, value)} can't be pruned — full scan`;
+      if (!d.skip) matches = file.rows.filter(r => likeMatch(String(r[col]), String(value)));
     } else {
-      const matches = file.rows.filter(r => r[col] === value);
-      matched += matches.length;
-      trace.push({ kind: "open", name: file.path, min: d.min, max: d.max, matches });
+      d = canSkipEq(file, col, value);
+      why = d.skip ? `range ${d.min}–${d.max}, doesn't contain ${fmt(op, value)}`
+                   : `range ${d.min}–${d.max}, checking rows`;
+      if (!d.skip) matches = file.rows.filter(r => r[col] === value);
     }
+    if (d.skip) { skipped++; trace.push({ kind: "skip", name: file.path, why, matches: [] }); }
+    else { matched += matches.length; trace.push({ kind: "open", name: file.path, why, matches }); }
   }
   return { snap, trace, matched, skipped, total: snap.files.length };
+}
+
+function fmt(op, value) {
+  return (op === "LIKE" || typeof value === "string") ? `'${value}'` : value;
 }
 
 // ===========================================================================
@@ -260,27 +370,33 @@ function runQuery(col, value, snapshotId) {
 // ===========================================================================
 const $ = id => document.getElementById(id);
 
-// Populate the column dropdown.
 for (const c of COLUMNS) {
   const o = document.createElement("option"); o.value = c; o.textContent = c; $("col").appendChild(o);
 }
-// Populate the snapshot dropdown (latest first).
-for (let i = SNAPSHOTS.length; i >= 1; i--) {
-  const o = document.createElement("option"); o.value = i;
-  o.textContent = i === SNAPSHOTS.length ? `#${i} (latest)` : `#${i}`;
-  $("snap").appendChild(o);
-}
-// Render the append-only history strip.
-for (const s of SNAPSHOTS) {
-  const el = document.createElement("span"); el.className = "snap";
-  el.textContent = `#${s.id}: ${s.files.map(f => f.path.replace(".csv","")).join(", ")}`;
-  $("history").appendChild(el);
+
+function rebuildSnapshotDropdown() {
+  const cur = Number($("snap").value) || SNAPSHOTS.length;
+  $("snap").innerHTML = "";
+  for (let i = SNAPSHOTS.length; i >= 1; i--) {
+    const o = document.createElement("option"); o.value = i;
+    o.textContent = i === SNAPSHOTS.length ? `#${i} (latest)` : `#${i}`;
+    $("snap").appendChild(o);
+  }
+  $("snap").value = Math.min(cur, SNAPSHOTS.length);
 }
 
-// Refresh the value autocomplete when the column changes.
+function rebuildHistory(freshId) {
+  $("history").innerHTML = "";
+  for (const s of SNAPSHOTS) {
+    const el = document.createElement("span");
+    el.className = "snap" + (s.id === freshId ? " fresh" : "");
+    el.textContent = `#${s.id}: ${s.files.map(f => f.path.replace(".csv", "")).join(", ")}`;
+    $("history").appendChild(el);
+  }
+}
+
 function refreshVals() {
-  const col = $("col").value;
-  const seen = new Set();
+  const col = $("col").value, seen = new Set();
   $("vals").innerHTML = "";
   for (const f of DATA_FILES) for (const r of f.rows) {
     const v = r[col];
@@ -288,49 +404,72 @@ function refreshVals() {
       const o = document.createElement("option"); o.value = v; $("vals").appendChild(o); }
   }
 }
-$("col").addEventListener("change", () => { refreshVals(); $("val").value = ""; });
-refreshVals();
 
-// Sensible starting example: the "Margin Call" query from the README.
-$("col").value = "title"; refreshVals(); $("val").value = "Margin Call";
+function refreshHint() {
+  const op = $("op").value;
+  $("valhint").textContent = op === "LIKE"
+    ? "Try a prefix like  I%  (prunes!) vs a leading wildcard like  %ll  (scans everything)."
+    : "Exact match. Try  Margin Call  — watch 3 of 4 files get skipped.";
+}
+
+$("col").addEventListener("change", () => { refreshVals(); $("val").value = ""; });
+$("op").addEventListener("change", refreshHint);
 
 function render() {
-  const col = $("col").value;
+  const col = $("col").value, op = $("op").value;
   const raw = $("val").value.trim();
   if (!raw) return;
-  const value = coerce(col, raw);
-  const snapshotId = Number($("snap").value);
-  const { snap, trace, matched, skipped, total } = runQuery(col, value, snapshotId);
+  const value = op === "LIKE" ? raw : coerce(col, raw);
+  const { snap, trace, matched, skipped, total } = runQuery(col, op, value, Number($("snap").value));
 
-  const shown = typeof value === "string" ? `'${value}'` : value;
   $("summary").innerHTML =
-    `<code>${col} == ${shown}</code> · snapshot #${snap.id} · ` +
+    `<code>${col} ${op} ${fmt(op, value)}</code> · snapshot #${snap.id} · ` +
     `<b>pruned ${skipped}/${total}</b> files unopened · found <b>${matched}</b> row(s)`;
 
   const box = $("files"); box.innerHTML = "";
   for (const t of trace) {
     const div = document.createElement("div");
     div.className = "file " + t.kind;
-    const rangeTxt = `range ${t.min}–${t.max}`;
-    const why = t.kind === "skip"
-      ? `${rangeTxt}, doesn't contain ${shown}`
-      : `${rangeTxt}, checking rows`;
     let matchHtml = "";
-    for (const m of t.matches) {
-      matchHtml += `<div class="match">→ ${JSON.stringify(m)}</div>`;
-    }
+    for (const m of t.matches) matchHtml += `<div class="match">→ ${JSON.stringify(m)}</div>`;
     div.innerHTML =
       `<span class="tag ${t.kind}">${t.kind.toUpperCase()}</span>` +
       `<div class="body"><div class="name">${t.name}</div>` +
-      `<div class="why">${why}</div>${matchHtml}</div>`;
+      `<div class="why">${t.why}</div>${matchHtml}</div>`;
     box.appendChild(div);
   }
   $("resultPanel").style.display = "";
 }
 
+// "Add a row" → a real append: new file, new snapshot, live UI update.
+$("add").addEventListener("click", () => {
+  const title = $("nt").value.trim();
+  const yearRaw = $("ny").value.trim();
+  const genre = $("ng").value.trim() || "Unknown";
+  if (!title) { $("addToast").innerHTML = `<div class="toast">Enter a title first.</div>`; return; }
+  const year = Number(yearRaw) || 0;
+  const fileName = `file_${DATA_FILES.length + 1}.csv`;
+  const snap = writeBatch([{ title, year, genre }], fileName);
+
+  rebuildSnapshotDropdown();
+  rebuildHistory(snap.id);
+  refreshVals();
+  $("nt").value = $("ny").value = $("ng").value = "";
+  $("addToast").innerHTML =
+    `<div class="toast">Wrote snapshot #${snap.id} → <code>${fileName}</code> ` +
+    `with min/max <code>title [${title}..${title}]</code>. Now query for “${title}”.</div>`;
+});
+
 $("run").addEventListener("click", render);
 $("val").addEventListener("keydown", e => { if (e.key === "Enter") render(); });
-render();  // show the default example on load
+
+// Initial state: the classic "Margin Call" example, ready to run.
+rebuildSnapshotDropdown();
+rebuildHistory();
+refreshVals();
+refreshHint();
+$("col").value = "title"; $("op").value = "=="; $("val").value = "Margin Call";
+render();
 </script>
 </body>
 </html>
