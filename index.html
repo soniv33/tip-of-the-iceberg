@@ -3,88 +3,88 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tip-of-the-iceberg — learn how Iceberg tables work, hands-on</title>
+<title>tip-of-the-iceberg — see how Iceberg finds data fast</title>
 <!--
-  An interactive, phone-friendly companion to the pure-Python `iceberg` engine
-  in this repo. The JavaScript below is a faithful in-memory port of that
-  engine: partitioning, per-file min/max stats, predicate pruning, an append-
-  only snapshot tree with sequence numbers, copy-on-write AND merge-on-read
-  deletes, update/upsert, compaction, snapshot expiration, and schema
-  evolution. Operate the table with the controls and watch the metadata tree,
-  the files, and the narration update in real time.
+  A calm, guided, phone-friendly companion to the pure-Python `iceberg` engine
+  in this repo. The JavaScript ENGINE section below is a faithful in-memory
+  port of that engine (unchanged, verified). The UI is built for LEARNING:
+  it leads with the payoff, offers a step-by-step tour that reveals one idea at
+  a time, hides advanced operations until you ask, and lets you click any file
+  to look inside it.
 -->
 <style>
-  :root {
-    --bg:#f6f7f9; --panel:#fff; --ink:#1a1f26; --muted:#5b6472; --line:#e2e6ec;
-    --accent:#2b6cb0; --skip:#b64a2f; --skip-bg:#fbeae4; --open:#1f7a4d;
-    --open-bg:#e3f4ea; --chip:#eef1f5; --code:#f0f2f5; --flash:#fff6d6;
-    --del:#8a5cc4; --del-bg:#f0e9fa;
-  }
-  @media (prefers-color-scheme: dark){:root{
-    --bg:#0f1319; --panel:#171c24; --ink:#e6eaf0; --muted:#97a1b0; --line:#262d38;
-    --accent:#6aa9e0; --skip:#e88a6f; --skip-bg:#35211b; --open:#6fce9b;
-    --open-bg:#16281e; --chip:#212833; --code:#10151c; --flash:#33301c;
-    --del:#b79ae0; --del-bg:#241b33;}}
-  :root[data-theme="light"]{--bg:#f6f7f9;--panel:#fff;--ink:#1a1f26;--muted:#5b6472;--line:#e2e6ec;--accent:#2b6cb0;--skip:#b64a2f;--skip-bg:#fbeae4;--open:#1f7a4d;--open-bg:#e3f4ea;--chip:#eef1f5;--code:#f0f2f5;--flash:#fff6d6;--del:#8a5cc4;--del-bg:#f0e9fa;}
-  :root[data-theme="dark"]{--bg:#0f1319;--panel:#171c24;--ink:#e6eaf0;--muted:#97a1b0;--line:#262d38;--accent:#6aa9e0;--skip:#e88a6f;--skip-bg:#35211b;--open:#6fce9b;--open-bg:#16281e;--chip:#212833;--code:#10151c;--flash:#33301c;--del:#b79ae0;--del-bg:#241b33;}
+  :root{--bg:#f6f7f9;--panel:#fff;--ink:#1a1f26;--muted:#5b6472;--line:#e2e6ec;
+    --accent:#2b6cb0;--skip:#b64a2f;--skip-bg:#fbeae4;--open:#1f7a4d;--open-bg:#e3f4ea;
+    --chip:#eef1f5;--code:#f0f2f5;--flash:#fff6d6;--del:#8a5cc4;--del-bg:#f0e9fa;--tour:#b9770e;--tour-bg:#fdf4e3;}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1319;--panel:#171c24;--ink:#e6eaf0;--muted:#97a1b0;
+    --line:#262d38;--accent:#6aa9e0;--skip:#e88a6f;--skip-bg:#35211b;--open:#6fce9b;--open-bg:#16281e;
+    --chip:#212833;--code:#10151c;--flash:#33301c;--del:#b79ae0;--del-bg:#241b33;--tour:#e0b060;--tour-bg:#2a2415;}}
+  :root[data-theme="light"]{--bg:#f6f7f9;--panel:#fff;--ink:#1a1f26;--muted:#5b6472;--line:#e2e6ec;--accent:#2b6cb0;--skip:#b64a2f;--skip-bg:#fbeae4;--open:#1f7a4d;--open-bg:#e3f4ea;--chip:#eef1f5;--code:#f0f2f5;--flash:#fff6d6;--del:#8a5cc4;--del-bg:#f0e9fa;--tour:#b9770e;--tour-bg:#fdf4e3;}
+  :root[data-theme="dark"]{--bg:#0f1319;--panel:#171c24;--ink:#e6eaf0;--muted:#97a1b0;--line:#262d38;--accent:#6aa9e0;--skip:#e88a6f;--skip-bg:#35211b;--open:#6fce9b;--open-bg:#16281e;--chip:#212833;--code:#10151c;--flash:#33301c;--del:#b79ae0;--del-bg:#241b33;--tour:#e0b060;--tour-bg:#2a2415;}
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    -webkit-text-size-adjust:100%;}
-  .wrap{max-width:820px;margin:0 auto;padding:20px 16px 60px;}
-  h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:-.02em;}
-  header p{color:var(--muted);margin:0 0 6px;}
-  code{background:var(--code);padding:1px 5px;border-radius:5px;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;}
-  details.eli5{background:var(--chip);border:1px solid var(--line);border-radius:10px;
-    padding:10px 12px;margin:14px 0 0;font-size:.9rem;}
-  details.eli5 summary{cursor:pointer;font-weight:600;color:var(--accent);}
-  details.eli5 ol{margin:10px 0 2px;padding-left:20px;color:var(--muted);}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;
-    padding:16px;margin-top:16px;}
-  .panel h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;}
-  label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;}
-  select,input{width:100%;padding:10px 12px;font-size:16px;color:var(--ink);
-    background:var(--bg);border:1px solid var(--line);border-radius:10px;-webkit-appearance:none;appearance:none;}
-  .row{display:grid;gap:10px;}
-  .row.c2{grid-template-columns:1fr 1fr;}
-  .row.c3{grid-template-columns:1fr 1fr 1fr;}
-  .row.c4{grid-template-columns:repeat(4,1fr);}
-  button{padding:11px 14px;font-size:15px;font-weight:600;color:#fff;background:var(--accent);
-    border:0;border-radius:10px;cursor:pointer;width:100%;}
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 64px;}
+  h1{font-size:1.45rem;margin:0 0 4px;letter-spacing:-.02em;}
+  header p{color:var(--muted);margin:0 0 12px;}
+  code{background:var(--code);padding:1px 5px;border-radius:5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;}
+  .toprow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  button{padding:11px 15px;font-size:15px;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:10px;cursor:pointer;}
   button.sec{background:transparent;color:var(--accent);border:1px solid var(--accent);}
-  button:active{filter:brightness(.92);}
+  button.tour{background:var(--tour);}
+  button:active{filter:brightness(.93);}
+  .modetoggle{margin-left:auto;font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;}
+  .modetoggle input{width:auto;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px;}
+  .panel h2{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px;}
+  .panel .cap{color:var(--muted);font-size:.85rem;margin:0 0 12px;}
+  label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;}
+  select,input{width:100%;padding:10px 12px;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;-webkit-appearance:none;appearance:none;}
+  .row{display:grid;gap:10px;}
+  .row.c2{grid-template-columns:1fr 1fr;} .row.c3{grid-template-columns:1fr 1fr 1fr;}
+  .qgrid{display:grid;grid-template-columns:1.1fr 1.1fr 1.4fr auto;gap:10px;align-items:end;}
   .hint{font-size:.78rem;color:var(--muted);margin:8px 2px 0;}
-  /* timeline */
+  /* payoff */
+  #payoff{background:var(--chip);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:16px;font-size:1rem;line-height:1.5;}
+  #payoff b{color:var(--accent);font-size:1.15em;}
+  #payoff .big{font-size:1.05rem;}
+  /* tour */
+  #tourbar{display:none;background:var(--tour-bg);border:1px solid var(--tour);border-radius:14px;padding:14px 16px;margin-top:16px;}
+  body.touring #tourbar{display:block;}
+  #tourbar .step{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--tour);font-weight:700;}
+  #tourbar h3{margin:4px 0 6px;font-size:1.05rem;}
+  #tourbar p{margin:0 0 12px;font-size:.95rem;}
+  #tourbar .btns{display:flex;gap:8px;}
+  #tourbar button{padding:9px 14px;font-size:14px;}
+  .spot{outline:3px solid var(--tour);outline-offset:4px;border-radius:14px;transition:outline-color .2s;}
+  /* history */
   .timeline{display:flex;gap:6px;flex-wrap:wrap;}
-  .snap{font-size:.78rem;padding:6px 10px;border-radius:999px;background:var(--chip);
-    border:1px solid var(--line);color:var(--muted);cursor:pointer;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;}
+  .snap{font-size:.78rem;padding:6px 10px;border-radius:999px;background:var(--chip);border:1px solid var(--line);color:var(--muted);cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;}
   .snap.cur{border-color:var(--accent);color:var(--accent);font-weight:700;}
   .snap.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
   .snap.fresh{animation:flash 1.4s ease-out;}
   @keyframes flash{from{background:var(--flash);}to{}}
-  /* warehouse */
-  .part{margin-top:10px;}
-  .part h3{font-size:.8rem;margin:0 0 6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);}
-  .file{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);
-    border-radius:10px;padding:8px 11px;margin-bottom:6px;background:var(--bg);}
+  /* files */
+  .part{margin-top:12px;}
+  .part h3{font-size:.8rem;margin:0 0 6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);}
+  .file{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:6px;background:var(--bg);cursor:pointer;}
+  .file:hover{border-color:var(--accent);}
   .file.del{background:var(--del-bg);border-color:var(--del);}
-  .file.skip{background:var(--skip-bg);}
-  .file.open{background:var(--open-bg);}
-  .file .nm{font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;}
+  .file.skip{background:var(--skip-bg);} .file.open{background:var(--open-bg);}
+  .file .nm{font-weight:600;font-size:.9rem;}
   .file .meta{color:var(--muted);font-size:.8rem;margin-top:2px;}
-  .tag{font-size:.65rem;font-weight:700;letter-spacing:.04em;padding:3px 6px;border-radius:6px;flex:0 0 auto;margin-top:1px;}
-  .tag.skip{color:var(--skip);border:1px solid var(--skip);}
-  .tag.open{color:var(--open);border:1px solid var(--open);}
-  .tag.del{color:var(--del);border:1px solid var(--del);}
-  .tag.data{color:var(--muted);border:1px solid var(--line);}
-  .stat{display:inline-block;font-size:.78rem;color:var(--muted);margin-right:12px;}
+  .file .peek{color:var(--accent);font-size:.72rem;margin-top:3px;}
+  .tag{font-size:.62rem;font-weight:700;letter-spacing:.03em;padding:3px 6px;border-radius:6px;flex:0 0 auto;margin-top:2px;}
+  .tag.skip{color:var(--skip);border:1px solid var(--skip);} .tag.open{color:var(--open);border:1px solid var(--open);}
+  .tag.del{color:var(--del);border:1px solid var(--del);} .tag.data{color:var(--muted);border:1px solid var(--line);}
+  .stat{display:inline-block;font-size:.8rem;color:var(--muted);margin-right:14px;}
   .stat b{color:var(--accent);}
-  .summary{font-size:.9rem;margin:0 0 10px;padding:9px 12px;border-radius:10px;background:var(--chip);border:1px solid var(--line);}
-  .summary b{color:var(--accent);}
-  .match{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;color:var(--open);margin-top:3px;word-break:break-word;}
-  /* accordion */
+  .qsum{font-size:.92rem;margin:12px 0 8px;padding:9px 12px;border-radius:10px;background:var(--chip);border:1px solid var(--line);}
+  .qsum b{color:var(--accent);}
+  .match{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem;color:var(--open);margin-top:3px;word-break:break-word;}
+  /* advanced gating */
+  .adv{display:none;}
+  body.advanced .adv{display:block;}
   details.op{border:1px solid var(--line);border-radius:12px;margin-top:10px;background:var(--panel);}
   details.op>summary{cursor:pointer;padding:12px 14px;font-weight:600;list-style:none;}
   details.op>summary::-webkit-details-marker{display:none;}
@@ -93,99 +93,114 @@
   details.op .body{padding:0 14px 14px;}
   .opblurb{font-size:.82rem;color:var(--muted);margin:0 0 10px;}
   /* log */
-  #log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;max-height:240px;overflow:auto;}
+  #log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem;max-height:200px;overflow:auto;}
   #log .ln{padding:4px 0;border-bottom:1px solid var(--line);}
-  #log .op{color:var(--accent);font-weight:700;}
-  #log .dim{color:var(--muted);}
+  #log .lop{color:var(--accent);font-weight:700;} #log .dim{color:var(--muted);}
+  /* modal */
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:16px;z-index:50;}
+  #modal.show{display:flex;}
+  #modal .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:560px;width:100%;max-height:82vh;overflow:auto;padding:18px;}
+  #modal h3{margin:0 0 4px;font-size:1.05rem;}
+  #modal .sub{color:var(--muted);font-size:.85rem;margin:0 0 12px;}
+  #modal table{width:100%;border-collapse:collapse;font-size:.85rem;}
+  #modal th,#modal td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  #modal th{color:var(--muted);font-weight:600;}
+  #modal .close{margin-top:14px;width:100%;}
+  .kv{font-size:.82rem;color:var(--muted);margin:2px 0;}
+  .kv b{color:var(--ink);font-weight:600;}
   footer{color:var(--muted);font-size:.8rem;margin-top:22px;text-align:center;}
   footer a{color:var(--accent);}
-  @media (max-width:520px){.row.c2,.row.c3,.row.c4{grid-template-columns:1fr;}}
+  @media (max-width:560px){.row.c2,.row.c3{grid-template-columns:1fr;}.qgrid{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>🧊 tip-of-the-iceberg</h1>
-    <p>A hands-on tour of how an Apache Iceberg table actually works. Query it,
-       write to it, delete, update, compact, time-travel — and watch the
-       metadata tree and files react.</p>
-    <details class="eli5">
-      <summary>Explain it like I'm five</summary>
-      <ol>
-        <li>Movies live in <b>boxes (files)</b>. Each box's lid says the <b>first &amp; last</b>
-            title inside (min/max), and which <b>genre shelf (partition)</b> it's on.</li>
-        <li>To find something, we read <b>lids</b> first and <b>skip</b> boxes that can't contain it.</li>
-        <li>Every change writes a new <b>snapshot</b> (a photo of the shelves). Old photos never change,
-            so we can <b>time-travel</b>.</li>
-        <li><b>Deleting</b> either rewrites a box (copy-on-write) or drops a <b>"skip this row" sticky note</b>
-            (merge-on-read).</li>
-        <li><b>Compaction</b> tidies many small boxes into big ones; <b>expiry</b> throws away old photos and
-            unused boxes.</li>
-      </ol>
-    </details>
+    <p>How does Apache Iceberg find one movie without reading every file? Watch it happen.</p>
+    <div class="toprow">
+      <button class="tour" id="tourStart">▶ Take the 60-second tour</button>
+      <label class="modetoggle"><input type="checkbox" id="advToggle"> Advanced mode</label>
+    </div>
   </header>
 
-  <!-- ===================== WAREHOUSE (live state) ===================== -->
-  <section class="panel">
-    <h2>Warehouse — viewing snapshot <span id="viewLabel"></span></h2>
-    <div class="timeline" id="timeline"></div>
-    <div id="counts" style="margin-top:12px;"></div>
-    <div id="tree" class="hint" style="margin-top:6px;"></div>
-    <div id="warehouse" style="margin-top:8px;"></div>
-  </section>
+  <!-- TOUR BAR -->
+  <div id="tourbar">
+    <div class="step" id="tourStep"></div>
+    <h3 id="tourTitle"></h3>
+    <p id="tourText"></p>
+    <div class="btns">
+      <button class="sec" id="tourBack">Back</button>
+      <button id="tourNext">Next</button>
+      <button class="sec" id="tourExit" style="margin-left:auto;">Exit</button>
+    </div>
+  </div>
 
-  <!-- ===================== QUERY ===================== -->
-  <section class="panel">
-    <h2>Query — watch the pruning</h2>
-    <div class="row c4">
+  <!-- PAYOFF -->
+  <div id="payoff"></div>
+
+  <!-- QUERY -->
+  <section class="panel" id="panelQuery">
+    <h2>Find a movie</h2>
+    <p class="cap">Pick a column and a value, then Search. Watch how few files Iceberg actually opens.</p>
+    <div class="qgrid">
       <div><label>column</label><select id="qcol"></select></div>
-      <div><label>operator</label><select id="qop">
-        <option value="==">==</option><option value="!=">!=</option>
-        <option value="<">&lt;</option><option value="<=">&lt;=</option>
-        <option value=">">&gt;</option><option value=">=">&gt;=</option>
-        <option value="like">LIKE (prefix%)</option>
-        <option value="in">IN (a,b)</option>
-        <option value="isnull">IS NULL</option>
-      </select></div>
+      <div><label>test</label><select id="qop"></select></div>
       <div><label>value</label><input id="qval" list="qvals" autocomplete="off"><datalist id="qvals"></datalist></div>
-      <div style="display:flex;align-items:flex-end;"><button id="qrun">Run</button></div>
+      <div><button id="qrun">Search</button></div>
     </div>
     <div class="hint" id="qhint"></div>
-    <div id="qresult" style="margin-top:12px;display:none;">
-      <div class="summary" id="qsummary"></div>
-      <div id="qfiles"></div>
+    <div id="qresult" style="display:none;">
+      <div class="qsum" id="qsummary"></div>
+      <div id="qmatches"></div>
     </div>
   </section>
 
-  <!-- ===================== OPERATIONS ===================== -->
-  <section class="panel">
-    <h2>Operations — change the table</h2>
+  <!-- FILES -->
+  <section class="panel" id="panelFiles">
+    <h2>The files</h2>
+    <p class="cap">Each file is a box of movies. Its <b>label</b> is the first &amp; last title inside — that's all
+       Iceberg reads to decide whether to open it. <b>Tap any box to look inside.</b></p>
+    <div id="warehouse"></div>
+    <div class="adv" id="counts" style="margin-top:12px;"></div>
+    <div class="adv hint" id="tree" style="margin-top:6px;"></div>
+  </section>
 
-    <details class="op"><summary>➕ Append a row (an Iceberg insert)</summary>
-      <div class="body">
-        <p class="opblurb">Writes a new data file in the row's genre partition and a new snapshot.
-          Old files/manifests are reused — appends are cheap.</p>
-        <div class="row c3">
-          <div><label>title</label><input id="atitle" placeholder="Tenet"></div>
-          <div><label>year</label><input id="ayear" placeholder="2020" inputmode="numeric"></div>
-          <div><label>genre</label><input id="agenre" placeholder="SciFi"></div>
-        </div>
-        <div style="margin-top:10px;"><button class="sec" id="abtn">Append → new snapshot</button></div>
-      </div>
-    </details>
+  <!-- HISTORY -->
+  <section class="panel" id="panelHistory">
+    <h2>History</h2>
+    <p class="cap">Every change writes a new <b>snapshot</b> — a photo of the whole table. Old photos never change,
+       so you can tap an earlier one to <b>time-travel</b>. Now viewing: <span id="viewLabel"></span></p>
+    <div class="timeline" id="timeline"></div>
+  </section>
 
-    <details class="op"><summary>🗑️ Delete rows (copy-on-write vs merge-on-read)</summary>
+  <!-- ADD (simple) -->
+  <section class="panel" id="panelAdd">
+    <h2>Add a movie</h2>
+    <p class="cap">Adding a row writes a new file and a new snapshot — Iceberg never edits an existing file.</p>
+    <div class="row c3">
+      <div><label>title</label><input id="atitle" placeholder="Tenet"></div>
+      <div><label>year</label><input id="ayear" placeholder="2020" inputmode="numeric"></div>
+      <div><label>genre</label><input id="agenre" placeholder="SciFi"></div>
+    </div>
+    <div style="margin-top:10px;"><button class="sec" id="abtn">Add → new snapshot</button></div>
+  </section>
+
+  <!-- ADVANCED OPERATIONS -->
+  <section class="panel adv" id="panelOps">
+    <h2>More operations</h2>
+    <p class="cap">The rest of what a real Iceberg table can do.</p>
+
+    <details class="op"><summary>🗑️ Delete (copy-on-write vs merge-on-read)</summary>
       <div class="body">
-        <p class="opblurb">Delete where a column equals a value. <b>Copy-on-write</b> rewrites the data files
-          without those rows. <b>Merge-on-read</b> writes a tiny delete file and hides the rows at read time
-          (folded away later by compaction).</p>
+        <p class="opblurb"><b>Copy-on-write</b> rewrites files without the rows. <b>Merge-on-read</b> drops a small
+          "skip this row" note and hides them at read time (compaction folds it away later).</p>
         <div class="row c3">
           <div><label>column</label><select id="dcol"></select></div>
           <div><label>equals</label><input id="dval" list="qvals" autocomplete="off"></div>
           <div><label>mode</label><select id="dmode">
             <option value="copy-on-write">copy-on-write</option>
-            <option value="merge-on-read">merge-on-read</option>
-          </select></div>
+            <option value="merge-on-read">merge-on-read</option></select></div>
         </div>
         <div style="margin-top:10px;"><button class="sec" id="dbtn">Delete → new snapshot</button></div>
       </div>
@@ -193,45 +208,40 @@
 
     <details class="op"><summary>✏️ Update / Upsert</summary>
       <div class="body">
-        <p class="opblurb">Update sets a column for matching rows (copy-on-write delete+insert). Upsert merges a
-          row by <code>title</code>: existing title is replaced, a new title is inserted (MERGE).</p>
-        <div class="row c4">
+        <p class="opblurb">Update sets a column for matching rows. Upsert merges a row by <code>title</code>
+          (replace-or-insert = MERGE).</p>
+        <div class="row c3">
           <div><label>where title ==</label><input id="utitle" list="qvals" autocomplete="off"></div>
-          <div><label>set column</label><select id="ucol"></select></div>
-          <div><label>to value</label><input id="uval"></div>
-          <div style="display:flex;align-items:flex-end;"><button class="sec" id="ubtn">Update</button></div>
+          <div><label>set</label><select id="ucol"></select></div>
+          <div><label>to</label><input id="uval"></div>
         </div>
-        <div class="row c4" style="margin-top:10px;">
+        <div style="margin-top:8px;"><button class="sec" id="ubtn" style="width:100%;">Update</button></div>
+        <div class="row c3" style="margin-top:12px;">
           <div><label>upsert title</label><input id="uptitle" placeholder="Her"></div>
           <div><label>year</label><input id="upyear" placeholder="2013" inputmode="numeric"></div>
           <div><label>genre</label><input id="upgenre" placeholder="Drama"></div>
-          <div style="display:flex;align-items:flex-end;"><button class="sec" id="upbtn">Upsert (by title)</button></div>
         </div>
+        <div style="margin-top:8px;"><button class="sec" id="upbtn" style="width:100%;">Upsert (by title)</button></div>
       </div>
     </details>
 
-    <details class="op"><summary>🧹 Maintenance — compact, expire, evolve</summary>
+    <details class="op"><summary>🧹 Compact · Expire · Evolve</summary>
       <div class="body">
-        <p class="opblurb"><b>Compact</b> merges each partition's small files into one and folds in delete files.
-          <b>Expire</b> keeps only the latest snapshot and garbage-collects unreferenced files.
-          <b>Add column</b> evolves the schema with no data rewrite (old rows read null).</p>
+        <p class="opblurb"><b>Compact</b> merges small files &amp; folds in delete notes. <b>Expire</b> keeps only the
+          latest snapshot and deletes unused files. <b>Add column</b> evolves the schema (old rows read null).</p>
         <div class="row c3">
-          <div><button class="sec" id="cbtn">Compact</button></div>
-          <div><button class="sec" id="ebtn">Expire snapshots</button></div>
-          <div style="display:flex;gap:8px;">
-            <input id="newcol" placeholder="rating">
-            <button class="sec" id="addcolbtn" style="width:auto;white-space:nowrap;">+ col</button>
-          </div>
+          <div><button class="sec" id="cbtn" style="width:100%;">Compact</button></div>
+          <div><button class="sec" id="ebtn" style="width:100%;">Expire</button></div>
+          <div style="display:flex;gap:6px;"><input id="newcol" placeholder="rating"><button class="sec" id="addcolbtn" style="white-space:nowrap;">+ col</button></div>
         </div>
-        <div style="margin-top:10px;"><button id="resetbtn">Reset to fresh table</button></div>
       </div>
     </details>
-  </section>
 
-  <!-- ===================== NARRATION ===================== -->
-  <section class="panel">
-    <h2>What just happened (Iceberg narration)</h2>
-    <div id="log"></div>
+    <details class="op"><summary>📜 What just happened (log)</summary>
+      <div class="body"><div id="log"></div></div>
+    </details>
+
+    <div style="margin-top:12px;"><button id="resetbtn" style="width:100%;">Reset to a fresh table</button></div>
   </section>
 
   <footer>
@@ -240,6 +250,15 @@
     Run <code>python demo.py</code> for the same tour in code.
   </footer>
 </div>
+
+<!-- FILE PREVIEW MODAL -->
+<div id="modal"><div class="card">
+  <h3 id="mTitle"></h3>
+  <div class="sub" id="mSub"></div>
+  <div id="mMeta"></div>
+  <div id="mBody"></div>
+  <button class="close" id="mClose">Close</button>
+</div></div>
 
 <script>
 "use strict";
@@ -472,106 +491,165 @@ function scanRows(pred, snap){
 }
 
 // ===========================================================================
-//  UI
+//  UI  — calm, guided, progressive.
 // ===========================================================================
 const $ = id => document.getElementById(id);
-function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+const esc = s => String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const isAdv = () => document.body.classList.contains("advanced");
+let lastDecisions = null;   // pruning trace to paint on the files
+let lastQueryLabel = null;
 
-function log(op, msg){
-  const div=document.createElement("div"); div.className="ln";
-  div.innerHTML = `<span class="op">${esc(op)}</span> <span class="dim">${msg}</span>`;
-  $("log").prepend(div);
+// operator option sets: friendly labels in simple mode, full set in advanced.
+const OPS_SIMPLE = [["==","is"],["like","starts with"],[">=","is at least (≥)"]];
+const OPS_ADV = [["==","is (==)"],["!=","is not (≠)"],["<","< less than"],["<=","≤"],
+  [">","> more than"],[">=","≥"],["like","starts with (LIKE x%)"],["in","is one of (IN)"],["isnull","is empty (NULL)"]];
+
+function fillOps(){
+  const set = isAdv() ? OPS_ADV : OPS_SIMPLE;
+  const cur = $("qop").value;
+  $("qop").innerHTML = set.map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
+  if (set.some(([v])=>v===cur)) $("qop").value = cur;
+  refreshQHint();
 }
-
 function fillColumnSelects(){
   const cols = state.schema.map(c=>c.name);
   for (const sel of ["qcol","dcol","ucol"]){
-    const cur = $(sel).value;
+    if(!$(sel)) continue; const cur=$(sel).value;
     $(sel).innerHTML = cols.map(c=>`<option>${c}</option>`).join("");
     if (cols.includes(cur)) $(sel).value = cur;
   }
 }
 function fillValueList(){
-  const col = $("qcol").value; const seen=new Set(); const opts=[];
+  const col=$("qcol").value, seen=new Set(), opts=[];
   for (const id in state.dataFiles) for (const r of state.dataFiles[id].rows){
     const v=r[col]; if(v!=null && !seen.has(v)){ seen.add(v); opts.push(`<option>${esc(v)}</option>`); } }
   $("qvals").innerHTML = opts.join("");
 }
+function refreshQHint(){
+  const op=$("qop").value;
+  const map={ like:"e.g. type  I  to mean 'starts with I'. A prefix still lets Iceberg skip files.",
+    in:"comma-separated, e.g.  Crime, Romance", isnull:"finds empty cells (try after adding a column in Advanced).",
+    "==":"exact match — try a title like Margin Call and watch the skipping." };
+  $("qhint").textContent = map[op] || "compares against each file's min/max.";
+}
 
+function log(op, msg){
+  if(!$("log")) return;
+  const d=document.createElement("div"); d.className="ln";
+  d.innerHTML=`<span class="lop">${esc(op)}</span> <span class="dim">${msg}</span>`;
+  $("log").prepend(d);
+}
+
+// ---- payoff line ----
+function renderPayoff(){
+  const snap = snapshotById(viewSnapshotId);
+  const total = snap ? liveEntries(snap).data.length : 0;
+  if (lastDecisions){
+    const opened = lastDecisions.filter(d=>d.open).length;
+    $("payoff").innerHTML =
+      `<div class="big">🐌 A plain database would open <b>all ${total}</b> files and scan every row.</div>`+
+      `<div class="big" style="margin-top:6px;">🧊 Iceberg opened just <b>${opened}</b> — it skipped the rest by reading their labels.</div>`;
+  } else {
+    $("payoff").innerHTML =
+      `<div class="big">This table holds ${snap?allLiveRows(snap).length:0} movies spread across <b>${total}</b> files.</div>`+
+      `<div class="big" style="margin-top:6px;">Search below and watch how few of them Iceberg actually opens.</div>`;
+  }
+}
+
+// ---- history ----
 function renderTimeline(){
   const tl=$("timeline"); tl.innerHTML="";
   for (const s of state.snapshots){
     const el=document.createElement("span");
     el.className="snap"+(s.id===state.currentId?" cur":"")+(s.id===viewSnapshotId?" sel":"");
-    el.textContent = `${s.id}·${s.op}`;
-    el.title = `snapshot ${s.id}: ${s.op}, ${s.summary.dataFiles} data files, ${s.summary.records} rows`;
-    el.onclick = ()=>{ viewSnapshotId=s.id; renderAll(); };
+    el.textContent = s.id;
+    el.title = `${s.op}: ${s.summary.dataFiles} files, ${s.summary.records} rows`;
+    el.onclick = ()=>{ viewSnapshotId=s.id; lastDecisions=null; renderAll(); };
     tl.appendChild(el);
   }
-  $("viewLabel").textContent = viewSnapshotId + (viewSnapshotId===state.currentId? " (latest)" : " — time travel");
+  $("viewLabel").innerHTML = `<code>${viewSnapshotId||"—"}</code>` +
+    (viewSnapshotId===state.currentId ? " (latest)" : " — earlier snapshot");
 }
 
+// ---- counts / tree (advanced) ----
 function renderCounts(){
   const snap = snapshotById(viewSnapshotId);
   const {data, dels} = snap ? liveEntries(snap) : {data:[],dels:[]};
-  const rows = snap ? allLiveRows(snap).length : 0;
   const physical = Object.keys(state.dataFiles).length + Object.keys(state.deleteFiles).length;
   $("counts").innerHTML =
     `<span class="stat">live data files <b>${data.length}</b></span>`+
     `<span class="stat">delete files <b>${dels.length}</b></span>`+
-    `<span class="stat">rows <b>${rows}</b></span>`+
+    `<span class="stat">rows <b>${snap?allLiveRows(snap).length:0}</b></span>`+
     `<span class="stat">snapshots <b>${state.snapshots.length}</b></span>`+
-    `<span class="stat">physical files on disk <b>${physical}</b></span>`;
+    `<span class="stat">physical files kept <b>${physical}</b></span>`;
   if (snap) $("tree").innerHTML =
-    `metadata → snapshot <code>${snap.id}</code> → manifest list → `+
-    `<code>${snap.manifestIds.length}</code> manifest(s) → <code>${data.length}</code> data + `+
-    `<code>${dels.length}</code> delete file(s)`;
+    `metadata → snapshot <code>${snap.id}</code> → manifest list → <code>${snap.manifestIds.length}</code> manifest(s) → `+
+    `<code>${data.length}</code> data + <code>${dels.length}</code> delete file(s)`;
 }
 
-function renderWarehouse(decisions){
+// ---- files ----
+function renderWarehouse(){
   const snap = snapshotById(viewSnapshotId);
   const box=$("warehouse"); box.innerHTML="";
-  if(!snap){ box.innerHTML=`<div class="hint">Empty table — append a row.</div>`; return; }
+  if(!snap){ box.innerHTML=`<div class="hint">Empty table — add a movie.</div>`; return; }
   const {data, dels} = liveEntries(snap);
-  const decByPath = {}; (decisions||[]).forEach(d=>decByPath[d.path]=d);
-  // group data files by partition
+  const decByPath={}; (lastDecisions||[]).forEach(d=>decByPath[d.path]=d);
   const parts={};
-  for (const e of data){ const p=e.path.split("/").slice(1,-1).join("/")||"(unpartitioned)";
-    (parts[p]=parts[p]||[]).push(e); }
-  for (const p of Object.keys(parts).sort()){
+  for (const e of data){ const p=e.partition.genre || "(none)"; (parts[p]=parts[p]||[]).push(e); }
+  for (const g of Object.keys(parts).sort()){
     const wrap=document.createElement("div"); wrap.className="part";
-    wrap.innerHTML=`<h3>📁 ${esc(p)}</h3>`;
-    for (const e of parts[p]){
+    wrap.innerHTML=`<h3>📁 genre = ${esc(g)}</h3>`;
+    for (const e of parts[g]){
       const d=decByPath[e.path];
-      const cls = d ? (d.open?"open":"skip") : "";
-      const tag = d ? (d.open?`<span class="tag open">OPEN</span>`:`<span class="tag skip">SKIP</span>`)
-                    : `<span class="tag data">DATA</span>`;
-      const tcol = "title";
-      const bounds = `${tcol} [${esc(e.lower[tcol])}..${esc(e.upper[tcol])}]`;
-      wrap.innerHTML += `<div class="file ${cls}">${tag}<div><div class="nm">${e.id}.csv</div>`+
-        `<div class="meta">${e.recordCount} row(s) · ${bounds} · seq ${e.seq}</div></div></div>`;
+      const cls=d?(d.open?"open":"skip"):"";
+      const tag=d?(d.open?`<span class="tag open">OPEN</span>`:`<span class="tag skip">SKIP</span>`)
+                 :`<span class="tag data">BOX</span>`;
+      const lo=e.lower.title, hi=e.upper.title;
+      const seq = isAdv()?` · seq ${e.seq}`:"";
+      const div=document.createElement("div"); div.className="file "+cls;
+      div.innerHTML=`${tag}<div><div class="nm">${e.recordCount} movie(s)</div>`+
+        `<div class="meta">label: ${esc(lo)} – ${esc(hi)}${seq}</div>`+
+        `<div class="peek">tap to look inside →</div></div>`;
+      div.onclick=()=>openPreview(e, dels);
+      wrap.appendChild(div);
     }
     box.appendChild(wrap);
   }
   if (dels.length){
     const wrap=document.createElement("div"); wrap.className="part";
-    wrap.innerHTML=`<h3>🩹 delete files (merge-on-read)</h3>`;
+    wrap.innerHTML=`<h3>🩹 skip-notes (merge-on-read deletes)</h3>`;
     for (const e of dels){
-      const keys = e.keys.map(k=>e.equalityIds.map(c=>`${c}=${k[c]}`).join(",")).join("; ");
-      wrap.innerHTML += `<div class="file del"><span class="tag del">DEL</span><div>`+
-        `<div class="nm">${e.id}.csv</div><div class="meta">equality delete · ${esc(keys)} · seq ${e.seq}`+
-        ` (hides matching rows in files with seq &lt; ${e.seq})</div></div></div>`;
+      const keys=e.keys.map(k=>e.equalityIds.map(c=>`${c} = ${k[c]}`).join(", ")).join("; ");
+      const div=document.createElement("div"); div.className="file del";
+      div.innerHTML=`<span class="tag del">NOTE</span><div><div class="nm">hide: ${esc(keys)}</div>`+
+        `<div class="meta">applied at read time to older files${isAdv()?` · seq ${e.seq}`:""}</div></div>`;
+      wrap.appendChild(div);
     }
     box.appendChild(wrap);
   }
 }
 
-function renderAll(decisions){ renderTimeline(); renderCounts(); renderWarehouse(decisions);
-  fillColumnSelects(); fillValueList(); }
+// ---- file preview modal ----
+function openPreview(entry, dels){
+  const kept = readLiveRows(entry, dels);
+  const hidden = entry.recordCount - kept.length;
+  $("mTitle").textContent = `Inside this file — genre = ${entry.partition.genre}`;
+  $("mSub").textContent = `${entry.recordCount} movie(s)` + (hidden?`, ${hidden} hidden by a skip-note`:"");
+  const cols = state.schema.map(c=>c.name);
+  $("mMeta").innerHTML =
+    `<div class="kv">label (title): <b>${esc(entry.lower.title)} – ${esc(entry.upper.title)}</b> — this is all Iceberg reads to decide skip vs open.</div>`+
+    (isAdv()?`<div class="kv">sequence number: <b>${entry.seq}</b> · file id <b>${entry.id}</b></div>`:"");
+  const head = cols.map(c=>`<th>${esc(c)}</th>`).join("");
+  const body = kept.map(r=>`<tr>${cols.map(c=>`<td>${r[c]==null?'<span style="opacity:.4">null</span>':esc(r[c])}</td>`).join("")}</tr>`).join("");
+  $("mBody").innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  $("modal").classList.add("show");
+}
+$("mClose").onclick = ()=>$("modal").classList.remove("show");
+$("modal").onclick = e=>{ if(e.target.id==="modal") $("modal").classList.remove("show"); };
 
 // ---- query ----
 function coerce(col, raw){
-  const t = state.schema.find(c=>c.name===col);
+  const t=state.schema.find(c=>c.name===col);
   if (t && (t.type==="int"||t.type==="long"||t.type==="double")){ const n=Number(raw); return Number.isFinite(n)?n:raw; }
   return raw;
 }
@@ -579,95 +657,147 @@ function runQuery(){
   const col=$("qcol").value, op=$("qop").value; let raw=$("qval").value.trim();
   let value;
   if (op==="isnull") value=null;
-  else if (op==="in") value = raw.split(",").map(s=>coerce(col, s.trim())).filter(s=>s!=="");
-  else if (op==="like") value = raw;
-  else { if(raw==="") return; value = coerce(col, raw); }
-  const snap = snapshotById(viewSnapshotId);
-  const pred = makePredicate(col, op, value);
-  const decisions = scanPlan(pred, snap);
-  const rows = scanRows(pred, snap);
-  const opened = decisions.filter(d=>d.open).length;
+  else if (op==="in") value=raw.split(",").map(s=>coerce(col,s.trim())).filter(s=>s!=="");
+  else if (op==="like") value=raw;
+  else { if(raw==="") return; value=coerce(col,raw); }
+  const snap=snapshotById(viewSnapshotId);
+  const pred=makePredicate(col,op,value);
+  lastDecisions=scanPlan(pred,snap);
+  lastQueryLabel=pred.repr();
+  const rows=scanRows(pred,snap);
+  const opened=lastDecisions.filter(d=>d.open).length;
   $("qresult").style.display="";
-  $("qsummary").innerHTML = `<code>${esc(pred.repr())}</code> · snapshot ${snap.id} · `+
-    `<b>pruned ${decisions.length-opened}/${decisions.length}</b> files · found <b>${rows.length}</b> row(s)`;
-  const rowsByNothing = rows.slice(0,12).map(r=>`<div class="match">→ ${esc(JSON.stringify(r))}</div>`).join("");
-  $("qfiles").innerHTML = rowsByNothing || `<div class="hint">no matching rows</div>`;
-  renderWarehouse(decisions);   // paint SKIP/OPEN onto the file view
-  log("SCAN", `${esc(pred.repr())} → opened ${opened}/${decisions.length}, ${rows.length} row(s)`);
-}
-function refreshQHint(){
-  const op=$("qop").value;
-  const map={ "like":"Prefix like  I  (matches I%) — still prunes. A leading %-wildcard could not.",
-    "in":"Comma-separated, e.g.  Crime, Romance", "isnull":"No value needed — finds null cells (try after adding a column).",
-    "==":"Exact match, e.g. Margin Call — watch most files get skipped." };
-  $("qhint").textContent = map[op] || "Range comparison against the column's min/max.";
+  $("qsummary").innerHTML=`Searched <code>${esc(pred.repr())}</code> — opened <b>${opened} of ${lastDecisions.length}</b> files, found <b>${rows.length}</b> movie(s).`;
+  $("qmatches").innerHTML = rows.slice(0,12).map(r=>`<div class="match">🎬 ${esc(r.title)} (${r.year??"—"}, ${esc(r.genre??"—")})</div>`).join("")
+    || `<div class="hint">no matches — but see how Iceberg still skipped the impossible files.</div>`;
+  renderPayoff(); renderWarehouse();
+  log("SEARCH", `${esc(pred.repr())} → opened ${opened}/${lastDecisions.length}, ${rows.length} row(s)`);
 }
 
-// ---- wire operations ----
-function afterWrite(snap, label){ viewSnapshotId=state.currentId; renderAll(); log(snap.op.toUpperCase(), label);
+// ---- render all ----
+function renderAll(){ fillColumnSelects(); fillValueList(); renderPayoff(); renderTimeline();
+  renderCounts(); renderWarehouse(); }
+
+function afterWrite(snap, label){ viewSnapshotId=state.currentId; lastDecisions=null; renderAll();
+  log(snap.op.toUpperCase(), label);
   const el=[...$("timeline").children].find(c=>c.classList.contains("cur")); if(el) el.classList.add("fresh"); }
 
+// ---- seed ----
 function seed(){ freshState(); for (const b of SEED_BATCHES) append(b.map(toRow));
-  viewSnapshotId = state.currentId; $("log").innerHTML="";
-  log("SEED", `wrote ${SEED_BATCHES.length} batches → ${state.snapshots.length} snapshots, partitioned by genre`); }
+  viewSnapshotId=state.currentId; lastDecisions=null; if($("log")) $("log").innerHTML="";
+  log("SEED", `wrote ${SEED_BATCHES.length} batches → ${state.snapshots.length} snapshots`); }
 
-$("qrun").onclick = runQuery;
+// ---- controls ----
+$("qrun").onclick=runQuery;
 $("qval").addEventListener("keydown",e=>{ if(e.key==="Enter") runQuery(); });
 $("qop").addEventListener("change",refreshQHint);
-$("qcol").addEventListener("change",()=>{ fillValueList(); });
+$("qcol").addEventListener("change",fillValueList);
+$("advToggle").addEventListener("change",e=>{
+  document.body.classList.toggle("advanced", e.target.checked); fillOps(); renderAll(); });
 
-$("abtn").onclick = ()=>{
+$("abtn").onclick=()=>{
   const t=$("atitle").value.trim(); if(!t) return;
   const row={title:t, year:Number($("ayear").value)||null, genre:$("agenre").value.trim()||"Unknown"};
-  const snap=append([row]);
-  $("atitle").value=$("ayear").value=$("agenre").value="";
-  afterWrite(snap, `+1 row (${esc(t)}) in partition genre=${esc(row.genre)}; reused ${snap.manifestIds.length-1} manifest(s) + 1 new`);
+  const snap=append([row]); $("atitle").value=$("ayear").value=$("agenre").value="";
+  afterWrite(snap, `added ${esc(t)} in a new file (genre=${esc(row.genre)}) and snapshot ${snap.id}`);
 };
-$("dbtn").onclick = ()=>{
+$("dbtn").onclick=()=>{
   const col=$("dcol").value, val=coerce(col,$("dval").value.trim()), mode=$("dmode").value;
   if($("dval").value.trim()==="") return;
   const snap=deleteRows(col,val,mode);
   afterWrite(snap, mode==="merge-on-read"
-    ? `merge-on-read: wrote a delete file for ${esc(col)}=${esc(val)} (data files untouched, hidden at read)`
-    : `copy-on-write: rewrote data without ${esc(col)}=${esc(val)} (no delete file)`);
+    ? `merge-on-read: wrote a skip-note for ${esc(col)}=${esc(val)} (files untouched)`
+    : `copy-on-write: rewrote files without ${esc(col)}=${esc(val)}`);
 };
-$("ubtn").onclick = ()=>{
+$("ubtn").onclick=()=>{
   const wt=$("utitle").value.trim(), col=$("ucol").value; if(!wt) return;
-  const val=coerce(col,$("uval").value.trim());
-  const snap=updateRows(wt,col,val);
-  afterWrite(snap, `set ${esc(col)}=${esc(val)} where title=${esc(wt)} (${snap._n} row(s)) — copy-on-write`);
+  const snap=updateRows(wt,col,coerce(col,$("uval").value.trim()));
+  afterWrite(snap, `set ${esc(col)}=${esc($("uval").value.trim())} where title=${esc(wt)} (${snap._n} row)`);
 };
-$("upbtn").onclick = ()=>{
+$("upbtn").onclick=()=>{
   const t=$("uptitle").value.trim(); if(!t) return;
   const row={title:t, year:Number($("upyear").value)||null, genre:$("upgenre").value.trim()||"Unknown"};
-  const snap=upsertRow(row);
-  $("uptitle").value=$("upyear").value=$("upgenre").value="";
-  afterWrite(snap, `merged title=${esc(t)} (replace-or-insert) — MERGE`);
+  const snap=upsertRow(row); $("uptitle").value=$("upyear").value=$("upgenre").value="";
+  afterWrite(snap, `merged title=${esc(t)} (replace-or-insert)`);
 };
-$("cbtn").onclick = ()=>{
-  const before=liveEntries(currentSnapshot()); const bd=before.data.length, bx=before.dels.length;
-  const snap=compact(); const after=liveEntries(currentSnapshot());
-  afterWrite(snap, `merged small files: ${bd}→${after.data.length} data files, ${bx}→${after.dels.length} delete files`);
+$("cbtn").onclick=()=>{
+  const b=liveEntries(currentSnapshot());
+  const snap=compact(); const a=liveEntries(currentSnapshot());
+  afterWrite(snap, `compacted: ${b.data.length}→${a.data.length} files, ${b.dels.length}→${a.dels.length} skip-notes`);
 };
-$("ebtn").onclick = ()=>{
-  const before=state.snapshots.length; const gc=expire(1);
-  viewSnapshotId=state.currentId; renderAll();
-  log("EXPIRE", `kept latest snapshot (${before}→1), garbage-collected ${gc} unreferenced file(s)`);
+$("ebtn").onclick=()=>{
+  const before=state.snapshots.length, gc=expire(1);
+  viewSnapshotId=state.currentId; lastDecisions=null; renderAll();
+  log("EXPIRE", `kept latest snapshot (${before}→1), deleted ${gc} unused file(s)`);
 };
-$("addcolbtn").onclick = ()=>{
+$("addcolbtn").onclick=()=>{
   const name=$("newcol").value.trim(); if(!name) return;
-  if(!addColumn(name,"double")){ log("SCHEMA", `column ${esc(name)} already exists`); return; }
-  $("newcol").value=""; renderAll();
-  log("SCHEMA", `added column ${esc(name)} (old rows read as null; no data rewritten)`);
+  if(!addColumn(name,"double")){ log("SCHEMA",`column ${esc(name)} exists`); return; }
+  $("newcol").value=""; renderAll(); log("SCHEMA", `added column ${esc(name)} (old rows read null; no rewrite)`);
 };
-$("resetbtn").onclick = ()=>{ seed(); renderAll(); };
+$("resetbtn").onclick=()=>{ seed(); renderAll(); };
+
+// ===========================================================================
+//  GUIDED TOUR — one idea at a time.
+// ===========================================================================
+const TOUR = [
+  { title:"The problem",
+    text:"This table has 18 movies split across many files. Normally, finding one movie means opening every file and scanning it. Iceberg avoids that. Watch.",
+    prep(){ setAdvanced(false); viewSnapshotId=state.currentId; lastDecisions=null; renderAll(); },
+    spot:"payoff" },
+  { title:"Watch it skip",
+    text:"We just searched for “Margin Call”. Look at the payoff: Iceberg opened only 1 file and skipped the rest. Scroll to The files — green = opened, faded = skipped.",
+    prep(){ setQuery("title","==","Margin Call"); runQuery(); },
+    spot:"payoff" },
+  { title:"How it decides",
+    text:"Each file's label is the first & last title inside (its min–max). “Margin Call” can't be in a box labelled Amelie–Drive, so it's skipped unread. Tap any box to look inside it.",
+    prep(){ scrollTo("panelFiles"); },
+    spot:"panelFiles" },
+  { title:"When it can't skip",
+    text:"Ranges work the same way, using the year label. Searching year ≥ 2014 matches more files, so more open. Pruning helps as much as the data allows — no magic.",
+    prep(){ setQuery("year",">=","2014"); runQuery(); },
+    spot:"payoff" },
+  { title:"Every change is a snapshot",
+    text:"Add a movie below. Iceberg writes a NEW file and a NEW snapshot — it never edits existing files. Try adding one, then come back.",
+    prep(){ scrollTo("panelAdd"); },
+    spot:"panelAdd" },
+  { title:"Time travel",
+    text:"Because old snapshots never change, you can revisit them. In History, tap an earlier snapshot to see the table as it was — then tap the latest to return.",
+    prep(){ scrollTo("panelHistory"); },
+    spot:"panelHistory" },
+  { title:"There's more when you want it",
+    text:"Deleting, updating, compaction, expiry, schema changes — I've switched on Advanced mode so you can explore them. Or just play. That's the whole idea: skip what you can, and keep every version.",
+    prep(){ setAdvanced(true); scrollTo("panelOps"); },
+    spot:"panelOps" },
+];
+let tourIdx=-1;
+function setAdvanced(on){ document.body.classList.toggle("advanced",on); $("advToggle").checked=on; fillOps(); }
+function setQuery(col,op,val){ $("qcol").value=col; fillValueList(); $("qop").value=op; refreshQHint(); $("qval").value=val; }
+function scrollTo(id){ $(id).scrollIntoView({behavior:"smooth",block:"center"}); }
+function clearSpot(){ document.querySelectorAll(".spot").forEach(e=>e.classList.remove("spot")); }
+function showTour(i){
+  tourIdx=i; const step=TOUR[i];
+  if(step.prep) step.prep();
+  clearSpot();
+  const t=$(step.spot); if(t){ t.classList.add("spot"); setTimeout(()=>scrollTo(step.spot),50); }
+  $("tourStep").textContent=`Step ${i+1} of ${TOUR.length}`;
+  $("tourTitle").textContent=step.title;
+  $("tourText").textContent=step.text;
+  $("tourBack").style.visibility=i===0?"hidden":"visible";
+  $("tourNext").textContent=i===TOUR.length-1?"Finish":"Next";
+}
+function startTour(){ document.body.classList.add("touring"); showTour(0); scrollTo("tourbar"); }
+function endTour(){ document.body.classList.remove("touring"); clearSpot(); tourIdx=-1; }
+$("tourStart").onclick=startTour;
+$("tourNext").onclick=()=>{ if(tourIdx>=TOUR.length-1) endTour(); else showTour(tourIdx+1); };
+$("tourBack").onclick=()=>{ if(tourIdx>0) showTour(tourIdx-1); };
+$("tourExit").onclick=endTour;
 
 // ---- boot ----
 seed();
-refreshQHint();
+fillOps();
 renderAll();
-// open with the classic query pre-filled
-$("qcol").value="title"; $("qop").value="=="; fillValueList(); $("qval").value="Margin Call";
+setQuery("title","==","Margin Call");
 runQuery();
 </script>
 </body>
