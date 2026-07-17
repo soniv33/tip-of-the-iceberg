@@ -35,9 +35,9 @@
   button:active{filter:brightness(.93);}
   .modetoggle{margin-left:auto;font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;}
   .modetoggle input{width:auto;height:18px;padding:0;margin:0;border:0;background:none;-webkit-appearance:auto;appearance:auto;accent-color:var(--accent);cursor:pointer;}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px;}
-  .panel h2{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px;}
-  .panel .cap{color:var(--muted);font-size:.85rem;margin:0 0 12px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px;}
+  .panel h2{font-size:.95rem;font-weight:700;color:var(--ink);margin:0 0 2px;letter-spacing:-.01em;}
+  .panel .cap{color:var(--muted);font-size:.82rem;margin:0 0 10px;}
   label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;}
   select,input:not([type=checkbox]){width:100%;padding:10px 12px;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;-webkit-appearance:none;appearance:none;}
   .row{display:grid;gap:10px;}
@@ -45,9 +45,8 @@
   .qgrid{display:grid;grid-template-columns:1.1fr 1.1fr 1.4fr auto;gap:10px;align-items:end;}
   .hint{font-size:.78rem;color:var(--muted);margin:8px 2px 0;}
   /* payoff */
-  #payoff{background:var(--chip);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:16px;font-size:1rem;line-height:1.5;}
-  #payoff b{color:var(--accent);font-size:1.15em;}
-  #payoff .big{font-size:1.05rem;}
+  #payoff{background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-top:12px;font-size:.95rem;line-height:1.45;}
+  #payoff b{color:var(--accent);}
   /* tour */
   #tourbar{display:none;background:var(--tour-bg);border:1px solid var(--tour);border-radius:14px;padding:14px 16px;margin-top:16px;}
   /* While the tour runs, pin the guide to the bottom so it stays visible as you scroll. */
@@ -67,19 +66,19 @@
   .snap.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
   .snap.fresh{animation:flash 1.4s ease-out;}
   @keyframes flash{from{background:var(--flash);}to{}}
-  /* files */
-  .part{margin-top:12px;}
-  .part h3{font-size:.8rem;margin:0 0 6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);}
-  .file{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:6px;background:var(--bg);cursor:pointer;}
-  .file:hover{border-color:var(--accent);}
-  .file.del{background:var(--del-bg);border-color:var(--del);}
-  .file.skip{background:var(--skip-bg);} .file.open{background:var(--open-bg);}
-  .file .nm{font-weight:600;font-size:.9rem;}
-  .file .meta{color:var(--muted);font-size:.8rem;margin-top:2px;}
-  .file .peek{color:var(--accent);font-size:.72rem;margin-top:3px;}
-  .tag{font-size:.62rem;font-weight:700;letter-spacing:.03em;padding:3px 6px;border-radius:6px;flex:0 0 auto;margin-top:2px;}
-  .tag.skip{color:var(--skip);border:1px solid var(--skip);} .tag.open{color:var(--open);border:1px solid var(--open);}
-  .tag.del{color:var(--del);border:1px solid var(--del);} .tag.data{color:var(--muted);border:1px solid var(--line);}
+  /* files — compact chips */
+  .part{margin-top:10px;}
+  .part h3{font-size:.76rem;margin:0 0 5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);font-weight:600;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .fchip{display:flex;flex-direction:column;align-items:flex-start;gap:0;border:1px solid var(--line);border-radius:9px;
+    padding:6px 10px;background:var(--bg);cursor:pointer;color:var(--ink);text-align:left;}
+  .fchip:hover{border-color:var(--accent);}
+  .fchip .lab{font-weight:600;font-size:.8rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;}
+  .fchip .cnt{color:var(--muted);font-size:.68rem;}
+  .fchip.skip{opacity:.4;}
+  .fchip.open{border-color:var(--open);background:var(--open-bg);}
+  .fchip.del{border-color:var(--del);background:var(--del-bg);}
+  .fchip.del .lab{font-weight:500;white-space:normal;}
   .stat{display:inline-block;font-size:.8rem;color:var(--muted);margin-right:14px;}
   .stat b{color:var(--accent);}
   .qsum{font-size:.92rem;margin:12px 0 8px;padding:9px 12px;border-radius:10px;background:var(--chip);border:1px solid var(--line);}
@@ -145,7 +144,7 @@
   <!-- QUERY -->
   <section class="panel" id="panelQuery">
     <h2>Find a movie</h2>
-    <p class="cap">Pick a column and a value, then Search. Watch how few files Iceberg actually opens.</p>
+    <p class="cap">Search, and watch how few files Iceberg opens.</p>
     <div class="qgrid">
       <div><label>column</label><select id="qcol"></select></div>
       <div><label>test</label><select id="qop"></select></div>
@@ -162,8 +161,8 @@
   <!-- FILES -->
   <section class="panel" id="panelFiles">
     <h2>The files</h2>
-    <p class="cap">Each file is a box of movies. Its <b>label</b> is the first &amp; last title inside — that's all
-       Iceberg reads to decide whether to open it. <b>Tap any box to look inside.</b></p>
+    <p class="cap">Each box's <b>label</b> is its first–last title — all Iceberg reads to skip or open it.
+       <b>Tap a box to look inside.</b></p>
     <div id="warehouse"></div>
     <div class="adv" id="counts" style="margin-top:12px;"></div>
     <div class="adv hint" id="tree" style="margin-top:6px;"></div>
@@ -172,15 +171,14 @@
   <!-- HISTORY -->
   <section class="panel" id="panelHistory">
     <h2>History</h2>
-    <p class="cap">Every change writes a new <b>snapshot</b> — a photo of the whole table. Old photos never change,
-       so you can tap an earlier one to <b>time-travel</b>. Now viewing: <span id="viewLabel"></span></p>
+    <p class="cap">Each change is a <b>snapshot</b>. Tap an earlier one to <b>time-travel</b>. Viewing: <span id="viewLabel"></span></p>
     <div class="timeline" id="timeline"></div>
   </section>
 
   <!-- ADD (simple) -->
   <section class="panel" id="panelAdd">
     <h2>Add a movie</h2>
-    <p class="cap">Adding a row writes a new file and a new snapshot — Iceberg never edits an existing file.</p>
+    <p class="cap">Writes a new file + snapshot — existing files are never edited.</p>
     <div class="row c3">
       <div><label>title</label><input id="atitle" placeholder="Tenet"></div>
       <div><label>year</label><input id="ayear" placeholder="2020" inputmode="numeric"></div>
@@ -550,12 +548,10 @@ function renderPayoff(){
   if (lastDecisions){
     const opened = lastDecisions.filter(d=>d.open).length;
     $("payoff").innerHTML =
-      `<div class="big">🐌 A plain database would open <b>all ${total}</b> files and scan every row.</div>`+
-      `<div class="big" style="margin-top:6px;">🧊 Iceberg opened just <b>${opened}</b> — it skipped the rest by reading their labels.</div>`;
+      `🧊 Iceberg opened <b>${opened}</b> of <b>${total}</b> files — a plain database would open all ${total} and scan every row.`;
   } else {
     $("payoff").innerHTML =
-      `<div class="big">This table holds ${snap?allLiveRows(snap).length:0} movies spread across <b>${total}</b> files.</div>`+
-      `<div class="big" style="margin-top:6px;">Search below and watch how few of them Iceberg actually opens.</div>`;
+      `${snap?allLiveRows(snap).length:0} movies across <b>${total}</b> files. Search below and watch how few Iceberg opens.`;
   }
 }
 
@@ -601,35 +597,28 @@ function renderWarehouse(){
   for (const e of data){ const p=e.partition.genre || "(none)"; (parts[p]=parts[p]||[]).push(e); }
   for (const g of Object.keys(parts).sort()){
     const wrap=document.createElement("div"); wrap.className="part";
-    wrap.innerHTML=`<h3>📁 genre = ${esc(g)}</h3>`;
-    for (const e of parts[g]){
-      const d=decByPath[e.path];
-      const cls=d?(d.open?"open":"skip"):"";
-      const tag=d?(d.open?`<span class="tag open">OPEN</span>`:`<span class="tag skip">SKIP</span>`)
-                 :`<span class="tag data">BOX</span>`;
-      const lo=e.lower.title, hi=e.upper.title;
-      const seq = isAdv()?` · seq ${e.seq}`:"";
-      const div=document.createElement("div"); div.className="file "+cls;
-      div.innerHTML=`${tag}<div><div class="nm">${e.recordCount} movie(s)</div>`+
-        `<div class="meta">label: ${esc(lo)} – ${esc(hi)}${seq}</div>`+
-        `<div class="peek">tap to look inside →</div></div>`;
-      div.onclick=()=>openPreview(e, dels);
-      wrap.appendChild(div);
-    }
+    const chips = parts[g].map(e=>{
+      const d=decByPath[e.path]; const cls=d?(d.open?"open":"skip"):"";
+      return `<button class="fchip ${cls}" data-fid="${e.id}">`+
+        `<span class="lab">${esc(e.lower.title)}–${esc(e.upper.title)}</span>`+
+        `<span class="cnt">${e.recordCount} movie${e.recordCount>1?"s":""}</span></button>`;
+    }).join("");
+    wrap.innerHTML=`<h3>📁 ${esc(g)}</h3><div class="chips">${chips}</div>`;
     box.appendChild(wrap);
   }
   if (dels.length){
     const wrap=document.createElement("div"); wrap.className="part";
-    wrap.innerHTML=`<h3>🩹 skip-notes (merge-on-read deletes)</h3>`;
-    for (const e of dels){
-      const keys=e.keys.map(k=>e.equalityIds.map(c=>`${c} = ${k[c]}`).join(", ")).join("; ");
-      const div=document.createElement("div"); div.className="file del";
-      div.innerHTML=`<span class="tag del">NOTE</span><div><div class="nm">hide: ${esc(keys)}</div>`+
-        `<div class="meta">applied at read time to older files${isAdv()?` · seq ${e.seq}`:""}</div></div>`;
-      wrap.appendChild(div);
-    }
+    const chips = dels.map(e=>{
+      const keys=e.keys.map(k=>e.equalityIds.map(c=>`${c}=${k[c]}`).join(",")).join("; ");
+      return `<span class="fchip del"><span class="lab">🩹 hide ${esc(keys)}</span>`+
+        `<span class="cnt">applied at read time</span></span>`;
+    }).join("");
+    wrap.innerHTML=`<h3>skip-notes (merge-on-read)</h3><div class="chips">${chips}</div>`;
     box.appendChild(wrap);
   }
+  // wire chip taps -> preview
+  box.querySelectorAll(".fchip[data-fid]").forEach(btn=>
+    btn.onclick=()=>openPreview(state.dataFiles[btn.dataset.fid], dels));
 }
 
 // ---- file preview modal ----
