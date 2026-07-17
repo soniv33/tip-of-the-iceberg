@@ -15,11 +15,27 @@ SKIP/OPEN pruning decisions and snapshots update in front of you. It opens
 with an ELI5 explainer. See [Live demo](#live-demo-phone--browser) below to
 host it on GitHub Pages.
 
-> ⚠️ **This is a toy for learning, not a real implementation.** It exists to
-> make one mechanism legible in ~300 lines of commented Python. Real Iceberg
-> is far more capable (schema evolution, hidden partitioning, Avro/Parquet,
-> concurrent writers, deletes, catalogs, and much more). Don't put this
-> anywhere near production.
+> ⚠️ **The top-level code is a toy for learning, not a real implementation.**
+> It exists to make one mechanism legible in ~300 lines of commented Python.
+> For the real thing, see the two-track layout below.
+
+---
+
+## Two tracks
+
+This repo teaches Iceberg from two directions:
+
+- **🧊 The toy (top level + `index.html`)** — a hand-rolled model in plain
+  Python + CSV/JSON, plus a phone-friendly browser demo. Read every line; see
+  min/max pruning, snapshots, and time travel with nothing hidden.
+- **⚙️ The real track ([`real/`](real/))** — the **official Apache
+  implementation, [PyIceberg](https://py.iceberg.apache.org/)**, building
+  **genuine Iceberg tables** on local disk: real Parquet data files, Avro
+  manifests, a SQLite catalog, partition pruning, and row-level deletes. The
+  same files Spark/Trino/DuckDB could open. See [`real/README.md`](real/README.md).
+
+Learn the mechanism in the toy, then watch the real engine do exactly the same
+things (and more) in `real/`.
 
 ---
 

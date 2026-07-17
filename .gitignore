@@ -2,6 +2,10 @@
 data/*.csv
 manifests/*.json
 
+# Real Iceberg track — generated warehouse + catalog, rebuilt every run.
+real/warehouse/
+real/catalog.db
+
 # Python bytecode
 __pycache__/
 *.pyc
