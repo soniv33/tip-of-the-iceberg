@@ -100,11 +100,34 @@ def main():
     # for years. Only files whose [min year .. max year] spans 2016 are opened.
     query.query("year", 2016)
 
+    # --- LIKE queries: the limits of min/max pruning -------------------
+    print("\n[3] LIKE PHASE — prefix patterns prune, leading wildcards can't\n")
+
+    # 'I%' is a PREFIX pattern, which is really the range ['I', 'J'). The same
+    # min/max test applies, so files whose title range misses that band get
+    # skipped. Only file_3 (Inception..Moonlight) can hold an 'I...' title.
+    query.query("title", "I%", op="LIKE")
+
+    # '%ll' has a LEADING wildcard. There's no lower/upper bound to compare
+    # against, so min/max proves nothing and EVERY file must be opened and
+    # scanned. Watch: zero files pruned. This is exactly the case real Iceberg
+    # leans on bloom filters (or a full scan) to handle.
+    query.query("title", "%ll", op="LIKE")
+
+    # --- Add a row: an append is just a new snapshot -------------------
+    print("\n[4] ADD A ROW — appending never rewrites old files\n")
+    # In Iceberg you don't edit an existing data file; you write a NEW one and
+    # record a NEW snapshot. So 'adding a row' is just another write_batch.
+    write.write_batch([{"title": "Tenet", "year": 2020, "genre": "SciFi"}], "file_5.csv")
+    # It's immediately visible to new queries via the latest snapshot...
+    query.query("title", "Tenet")
+
     # --- Time travel ---------------------------------------------------
-    print("\n[3] TIME TRAVEL — query the table as it existed at snapshot #2\n")
+    print("\n[5] TIME TRAVEL — query the table as it existed at snapshot #2\n")
     # At snapshot #2 only batches 1 and 2 had been written, so 'Margin Call'
     # (batch 3) did not exist yet. The query sees only two data files and
-    # finds nothing — exactly what the table looked like back then.
+    # finds nothing — exactly what the table looked like back then. Note that
+    # 'Tenet' (snapshot #5) is likewise invisible here.
     query.query("title", "Margin Call", snapshot_id=2)
 
     print("\nDone. Poke around data/ and manifests/ to see what got written.")

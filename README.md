@@ -10,8 +10,10 @@ exactly what's inside.
 
 **📱 Try it in your browser / on your phone:** open [`index.html`](index.html) —
 a self-contained page (no server, no build step) that mirrors the Python and
-lets you run queries and watch the SKIP/OPEN pruning decisions interactively.
-See [Live demo](#live-demo-phone--browser) below to host it on GitHub Pages.
+lets you run queries (`==` and `LIKE`), **add a row live**, and watch the
+SKIP/OPEN pruning decisions and snapshots update in front of you. It opens
+with an ELI5 explainer. See [Live demo](#live-demo-phone--browser) below to
+host it on GitHub Pages.
 
 > ⚠️ **This is a toy for learning, not a real implementation.** It exists to
 > make one mechanism legible in ~300 lines of commented Python. Real Iceberg
@@ -32,6 +34,27 @@ value and **skip it without ever opening it**.
 If a file's titles run from `Amelie` to `Drive`, then `Margin Call` (which
 sorts after `Drive`) simply cannot be in it. Skip it. That's min/max pruning,
 and it's the whole trick.
+
+### `LIKE`: where pruning works, and where it can't
+
+The same min/max idea extends to `LIKE`, and it's a great lesson in the
+*limits* of pruning:
+
+- **Prefix pattern** — `title LIKE 'Ma%'` matches exactly the range
+  `['Ma', 'Mb')`, so min/max still prunes files. (Real engines literally
+  rewrite `col LIKE 'x%'` into `col >= 'x' AND col < 'x'++`.)
+- **Leading wildcard** — `title LIKE '%all'` has no lower/upper bound, so
+  min/max can prove nothing and **every file must be opened**. In real
+  Iceberg this is where bloom filters or a full scan take over.
+
+### Adding a row
+
+Iceberg never edits an existing data file. **Adding a row is a new write:** a
+new data file + a new manifest + a new snapshot. `write.write_batch([row],
+"file_5.csv")` does exactly this, and the row is instantly visible to new
+queries while every older snapshot stays unchanged (so time travel still
+works). Updates/deletes are a separate mechanism (delete files /
+merge-on-read) this toy doesn't cover.
 
 ---
 
