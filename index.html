@@ -34,12 +34,12 @@
   button.tour{background:var(--tour);}
   button:active{filter:brightness(.93);}
   .modetoggle{margin-left:auto;font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;}
-  .modetoggle input{width:auto;}
+  .modetoggle input{width:auto;height:18px;padding:0;margin:0;border:0;background:none;-webkit-appearance:auto;appearance:auto;accent-color:var(--accent);cursor:pointer;}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:16px;}
   .panel h2{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 4px;}
   .panel .cap{color:var(--muted);font-size:.85rem;margin:0 0 12px;}
   label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px;}
-  select,input{width:100%;padding:10px 12px;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;-webkit-appearance:none;appearance:none;}
+  select,input:not([type=checkbox]){width:100%;padding:10px 12px;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;-webkit-appearance:none;appearance:none;}
   .row{display:grid;gap:10px;}
   .row.c2{grid-template-columns:1fr 1fr;} .row.c3{grid-template-columns:1fr 1fr 1fr;}
   .qgrid{display:grid;grid-template-columns:1.1fr 1.1fr 1.4fr auto;gap:10px;align-items:end;}
@@ -50,7 +50,10 @@
   #payoff .big{font-size:1.05rem;}
   /* tour */
   #tourbar{display:none;background:var(--tour-bg);border:1px solid var(--tour);border-radius:14px;padding:14px 16px;margin-top:16px;}
-  body.touring #tourbar{display:block;}
+  /* While the tour runs, pin the guide to the bottom so it stays visible as you scroll. */
+  body.touring #tourbar{display:block;position:fixed;left:16px;right:16px;bottom:12px;margin:0 auto;
+    max-width:728px;z-index:40;max-height:48vh;overflow:auto;box-shadow:0 -2px 22px rgba(0,0,0,.22);}
+  body.touring .wrap{padding-bottom:270px;}
   #tourbar .step{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--tour);font-weight:700;}
   #tourbar h3{margin:4px 0 6px;font-size:1.05rem;}
   #tourbar p{margin:0 0 12px;font-size:.95rem;}
@@ -786,7 +789,7 @@ function showTour(i){
   $("tourBack").style.visibility=i===0?"hidden":"visible";
   $("tourNext").textContent=i===TOUR.length-1?"Finish":"Next";
 }
-function startTour(){ document.body.classList.add("touring"); showTour(0); scrollTo("tourbar"); }
+function startTour(){ document.body.classList.add("touring"); showTour(0); }
 function endTour(){ document.body.classList.remove("touring"); clearSpot(); tourIdx=-1; }
 $("tourStart").onclick=startTour;
 $("tourNext").onclick=()=>{ if(tourIdx>=TOUR.length-1) endTour(); else showTour(tourIdx+1); };
