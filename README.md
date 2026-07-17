@@ -8,6 +8,11 @@ Local files only. No cloud, no S3, no Spark, no external dependencies — just
 the Python standard library. Data files are CSV so you can `cat` them and see
 exactly what's inside.
 
+**📱 Try it in your browser / on your phone:** open [`index.html`](index.html) —
+a self-contained page (no server, no build step) that mirrors the Python and
+lets you run queries and watch the SKIP/OPEN pruning decisions interactively.
+See [Live demo](#live-demo-phone--browser) below to host it on GitHub Pages.
+
 > ⚠️ **This is a toy for learning, not a real implementation.** It exists to
 > make one mechanism legible in ~300 lines of commented Python. Real Iceberg
 > is far more capable (schema evolution, hidden partitioning, Avro/Parquet,
@@ -108,6 +113,33 @@ naturally from never mutating the past.
   queries plus a time-travel query, printing the full trace.
 
 Everything is heavily commented — the code is meant to be *read*.
+
+---
+
+## Live demo (phone / browser)
+
+`index.html` is a single self-contained file — all HTML/CSS/JS inline, no
+external requests — that reimplements the exact same mechanism (min/max
+pruning over append-only snapshots) in a few lines of vanilla JavaScript. The
+Python remains the canonical reference; the page just mirrors it so you can
+poke at it from a phone.
+
+**Run it locally:** just open the file in a browser (double-click, or
+`python -m http.server` and visit it). No build step, works offline.
+
+**Host it free on GitHub Pages** (no server needed — the page is static):
+
+1. Push this repo to GitHub (the `index.html` must be on your default branch,
+   e.g. `main`).
+2. Repo → **Settings → Pages**.
+3. Under **Build and deployment**, set **Source = Deploy from a branch**,
+   pick your default branch and the `/ (root)` folder, then **Save**.
+4. Wait ~1 minute; your demo is live at
+   `https://<username>.github.io/tip-of-the-iceberg/`.
+
+That URL opens fine on a phone. (Vercel/Netlify also work — point them at the
+repo with no build command and an empty output dir — but GitHub Pages needs
+zero extra config here.)
 
 ---
 
